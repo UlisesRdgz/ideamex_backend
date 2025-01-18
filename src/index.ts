@@ -21,6 +21,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import authRoutes from './routes/auth';
 import { pool } from './config/db';
+import passport from './config/passportConfig';
 
 // Carga las variables de entorno
 dotenv.config();
@@ -34,6 +35,9 @@ app.use(cors());
 if (process.env.NODE_ENV !== 'production') {
     app.use(morgan('dev'));
 }
+
+// Inicializar Passport
+app.use(passport.initialize());
 
 // Verifica la conexión a la base de datos
 pool.getConnection()

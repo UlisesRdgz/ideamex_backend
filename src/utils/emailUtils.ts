@@ -42,3 +42,36 @@ export const sendActivationEmail = async (email: string, token: string) => {
         `,
     });
 };
+
+/**
+ * Envía un correo electrónico para restablecer la contraseña con un token único.
+ * 
+ * @async
+ * @function sendPasswordResetEmail
+ * @param {string} email - Dirección de correo electrónico del usuario.
+ * @param {string} token - Token único generado para el restablecimiento de contraseña.
+ * @throws {Error} Error al configurar el transporte de correo o al enviar el correo electrónico.
+ */
+export const sendPasswordResetEmail = async (email: string, token: string) => {
+    const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || '587'),
+        auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASSWORD,
+        },
+    });
+
+    const resetLink = `http://localhost:3000/api/auth/reset-password?token=${token}`;
+
+    await transporter.sendMail({
+        from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
+        to: email,
+        subject: 'Password reset request',
+        html: `
+            <h1>Password reset</h1>
+            <p>Click the link below to reset your password:</p>
+            <a href="${resetLink}">${resetLink}</a>
+        `,
+    });
+};
