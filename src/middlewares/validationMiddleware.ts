@@ -32,18 +32,10 @@ export const validateRequest = (req: Request, res: Response, next: NextFunction)
 };
 
 /**
- * Arreglo de middlewares para validar los datos del registro de usuario.
- * Comprueba la validez de email, username, password y confirmPassword.
- * 
- * @constant
+ * Validaciones generales para contraseñas.
+ * Aplica requisitos como longitud mínima, uso de caracteres especiales, números, etc.
  */
-export const validateRegistration = [
-    body('email')
-        .isEmail()
-        .withMessage('Invalid email address'),
-    body('username')
-        .notEmpty()
-        .withMessage('Username is required'),
+export const passwordValidationRules = () => [
     body('password')
         .isLength({ min: 8 })
         .withMessage('Password must be at least 8 characters long')
@@ -55,6 +47,22 @@ export const validateRegistration = [
         .withMessage('Password must include at least one number')
         .matches(/[@$!%*?&]/)
         .withMessage('Password must include at least one special character'),
+];
+
+/**
+ * Define las reglas de validación para contraseñas.
+ * 
+ * @function passwordValidationRules
+ * @returns {Array} Reglas de validación para asegurar que las contraseñas cumplan los requisitos mínimos.
+ */
+export const validateRegistration = [
+    body('email')
+        .isEmail()
+        .withMessage('Invalid email address'),
+    body('username')
+        .notEmpty()
+        .withMessage('Username is required'),
+    ...passwordValidationRules(),
     body('confirmPassword')
         .notEmpty()
         .withMessage('Confirm password is required')
@@ -64,4 +72,32 @@ export const validateRegistration = [
             }
             return true;
         }),
+];
+
+/**
+ * Arreglo de middlewares para validar los datos de registro de un usuario.
+ * 
+ * @function validateRegistration
+ * @returns {Array} Reglas de validación para los campos `email`, `username`, `password` y `confirmPassword`.
+ */
+export const validateLogin = [
+    body('email')
+        .isEmail()
+        .withMessage('Invalid email address'),
+    body('password')
+        .notEmpty()
+        .withMessage('Password is required'),
+];
+
+export const validatePasswordResetRequest = [
+    body('email')
+        .isEmail()
+        .withMessage('Invalid email address'),
+];
+
+export const validatePasswordReset = [
+    body('token')
+        .notEmpty()
+        .withMessage('Token is required'),
+    ...passwordValidationRules(),
 ];
