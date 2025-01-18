@@ -7,6 +7,7 @@
  * 
  * @author Ulises Rodriguez García
  */
+import jwt from 'jsonwebtoken';
 import { randomBytes } from 'crypto';
 
 /**
@@ -17,4 +18,19 @@ import { randomBytes } from 'crypto';
  */
 export const generateToken = (): string => {
     return randomBytes(32).toString('hex');
+};
+
+
+/**
+ * Genera un token JWT para el usuario.
+ * 
+ * @function generateJwtToken
+ * @param {number} userId - ID del usuario.
+ * @returns {string} Token JWT firmado.
+ */
+export const generateJwtToken = (userId: number): string => {
+    const secret = process.env.JWT_SECRET || 'defaultsecret';
+    const expiresIn = process.env.JWT_EXPIRES_IN || '1h';
+
+    return jwt.sign({ userId }, secret, { expiresIn });
 };
