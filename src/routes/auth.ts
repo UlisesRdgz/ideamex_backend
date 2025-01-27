@@ -8,7 +8,7 @@
  * @requires ../middlewares/authMiddleware
  * @requires ../controllers/authController
  * 
- * @author Ulises Rodriguez García
+ * @author Ulises Rodríguez García
  */
 
 import { Router } from 'express';

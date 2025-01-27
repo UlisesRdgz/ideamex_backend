@@ -10,7 +10,7 @@
  * @requires ../utils/emailUtils
  * @requires ../services/authService
  * 
- * @author Ulises Rodriguez García
+ * @author Ulises Rodríguez García
  */
 
 import bcrypt from 'bcrypt';

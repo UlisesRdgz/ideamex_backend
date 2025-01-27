@@ -5,7 +5,7 @@
  * @module utils/tokenUtils
  * @requires crypto
  * 
- * @author Ulises Rodriguez García
+ * @author Ulises Rodríguez García
  */
 import jwt from 'jsonwebtoken';
 import { randomBytes } from 'crypto';

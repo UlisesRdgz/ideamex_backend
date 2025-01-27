@@ -1,6 +1,6 @@
 /**
  * @file Archivo principal de la aplicación.
- * Configura el servidor Express, la conexión a la base de datos y las rutas principales.
+ * Configura el servidor Express, la conexión a la base de datos, las rutas principales y la documentación Swagger protegida.
  * 
  * @module index
  * @requires express
@@ -8,10 +8,14 @@
  * @requires cors
  * @requires helmet
  * @requires morgan
+ * @requires swagger-jsdoc
+ * @requires swagger-ui-express
  * @requires ./routes/auth
  * @requires ./config/db
+ * @requires ./config/swagger
+ * @requires ./middlewares/basicAuthMiddleware
  * 
- * @author Ulises Rodriguez García
+ * @author Ulises Rodríguez García
  */
 
 import express, { Application, Request, Response, NextFunction } from 'express';
@@ -19,16 +23,21 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import swaggerJsdoc from 'swagger-jsdoc';
+import swaggerUi from 'swagger-ui-express';
+
 import authRoutes from './routes/auth';
 import { pool } from './config/db';
 import passport from './config/passportConfig';
+import swaggerOptions from './config/swagger';
+import { swaggerAuth } from './middlewares/swaggerAuthMiddleware';
 
 // Carga las variables de entorno
 dotenv.config();
 
 const app: Application = express();
 
-// Middlewares
+// Middlewares globales
 app.use(express.json());
 app.use(helmet());
 app.use(cors());
@@ -50,7 +59,13 @@ pool.getConnection()
         process.exit(1);
     });
 
-// Rutas
+// Configuración de Swagger
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
+
+// Rutas protegidas para Swagger
+app.use('/api-docs', swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+// Rutas de autenticación
 app.use('/api/auth', authRoutes);
 
 /**
@@ -81,4 +96,5 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Swagger docs available at http://localhost:${PORT}/api-docs`);
 });

@@ -5,7 +5,7 @@
  * @module utils/emailUtils
  * @requires nodemailer
  * 
- * @author Ulises Rodriguez García
+ * @author Ulises Rodríguez García
  */
 
 import nodemailer from 'nodemailer';
