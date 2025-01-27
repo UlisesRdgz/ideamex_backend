@@ -6,7 +6,7 @@
  * @requires mariadb
  * @requires dotenv
  * 
- * @author Ulises Rodriguez García
+ * @author Ulises Rodríguez García
  */
 
 import mariadb from 'mariadb';

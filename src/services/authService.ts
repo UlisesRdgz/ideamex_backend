@@ -5,7 +5,7 @@
  * @module services/authService
  * @requires ../config/db
  * 
- * @author Ulises Rodriguez García
+ * @author Ulises Rodríguez García
  */
 
 import { pool } from '../config/db';

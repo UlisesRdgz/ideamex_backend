@@ -6,7 +6,7 @@
  * @requires express
  * @requires express-validator
  * 
- * @author Ulises Rodriguez García
+ * @author Ulises Rodríguez García
  */
 
 import { Request, Response, NextFunction } from 'express';

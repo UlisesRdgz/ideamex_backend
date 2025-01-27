@@ -5,6 +5,8 @@
  * @requires passport
  * @requires passport-google-oauth20
  * @requires ../services/authService
+ * 
+ * @author Ulises Rodríguez García
  */
 
 import passport from 'passport';
