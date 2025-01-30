@@ -37,6 +37,10 @@ dotenv.config();
 
 const app: Application = express();
 
+// Carga configuraciones desde el .env
+const PORT: number = parseInt(process.env.PORT || '3000', 10);
+const BASE_PATH: string = process.env.BASE_PATH || '/ideamex_backend';
+
 // Middlewares globales
 app.use(express.json());
 app.use(helmet());
@@ -63,10 +67,10 @@ pool.getConnection()
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 
 // Rutas protegidas para Swagger
-app.use('/api-docs', swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use(`${BASE_PATH}/api-docs`, swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Rutas de autenticación
-app.use('/api/auth', authRoutes);
+app.use(`${BASE_PATH}/api/auth`, authRoutes);
 
 /**
  * Ruta principal.
@@ -74,7 +78,7 @@ app.use('/api/auth', authRoutes);
  * @function
  * @returns {Object} Mensaje de bienvenida.
  */
-app.get('/', (req: Request, res: Response) => {
+app.get(`${BASE_PATH}`, (req: Request, res: Response) => {
     res.json({ message: 'Welcome to the IDEAMEX Backend API!' });
 });
 
@@ -93,8 +97,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 // Inicia el servidor
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Swagger docs available at http://localhost:${PORT}/api-docs`);
+app.listen(PORT, '127.0.0.1', () => {
+    console.log(`Server running on http://127.0.0.1:${PORT}${BASE_PATH}`);
+    console.log(`Swagger docs available at http://127.0.0.1:${PORT}${BASE_PATH}/api-docs`);
 });
