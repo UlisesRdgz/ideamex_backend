@@ -10,6 +10,9 @@
 
 import { Options } from 'swagger-jsdoc';
 
+// Cargar BASE_PATH desde las variables de entorno o usar `/ideamex_backend` por defecto
+const BASE_PATH = process.env.BASE_PATH || '/ideamex_backend';
+
 /**
  * Configuración para generar la documentación de Swagger.
  * 
@@ -29,7 +32,7 @@ const swaggerOptions: Options = {
         },
         servers: [
             {
-                url: 'http://localhost:3000',
+                url: `http://127.0.0.1:3000${BASE_PATH}`,
                 description: 'Local development server',
             },
         ],
