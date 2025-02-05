@@ -25,12 +25,14 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
+import cookieParser from 'cookie-parser';
 
 import authRoutes from './routes/auth';
 import { pool } from './config/db';
 import passport from './config/passportConfig';
 import swaggerOptions from './config/swagger';
 import { swaggerAuth } from './middlewares/swaggerAuthMiddleware';
+import protectedRoutes from './routes/protected';
 
 // Carga las variables de entorno
 dotenv.config();
@@ -43,6 +45,7 @@ const BASE_PATH: string = process.env.BASE_PATH || '/ideamex_backend';
 
 // Middlewares globales
 app.use(express.json());
+app.use(cookieParser());
 app.use(helmet());
 app.use(cors());
 if (process.env.NODE_ENV !== 'production') {
@@ -71,6 +74,9 @@ app.use(`${BASE_PATH}/api-docs`, swaggerAuth, swaggerUi.serve, swaggerUi.setup(s
 
 // Rutas de autenticación
 app.use(`${BASE_PATH}/api/auth`, authRoutes);
+
+// Agrega las rutas protegidas
+app.use(`${BASE_PATH}/api/protected`, protectedRoutes);
 
 /**
  * Ruta principal.

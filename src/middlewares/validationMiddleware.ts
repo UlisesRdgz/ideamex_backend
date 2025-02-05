@@ -32,8 +32,8 @@ export const validateRequest = (req: Request, res: Response, next: NextFunction)
 };
 
 /**
- * Validaciones generales para contraseñas.
- * Aplica requisitos como longitud mínima, uso de caracteres especiales, números, etc.
+ * Reglas de validación para contraseñas seguras.
+ * Incluyen requisitos de longitud, mayúsculas, minúsculas, números y caracteres especiales.
  */
 export const passwordValidationRules = () => [
     body('password')
@@ -49,12 +49,6 @@ export const passwordValidationRules = () => [
         .withMessage('Password must include at least one special character'),
 ];
 
-/**
- * Define las reglas de validación para contraseñas.
- * 
- * @function passwordValidationRules
- * @returns {Array} Reglas de validación para asegurar que las contraseñas cumplan los requisitos mínimos.
- */
 export const validateRegistration = [
     body('email')
         .isEmail()
@@ -74,12 +68,6 @@ export const validateRegistration = [
         }),
 ];
 
-/**
- * Arreglo de middlewares para validar los datos de registro de un usuario.
- * 
- * @function validateRegistration
- * @returns {Array} Reglas de validación para los campos `email`, `username`, `password` y `confirmPassword`.
- */
 export const validateLogin = [
     body('email')
         .isEmail()

@@ -18,8 +18,6 @@ dotenv.config();
 /**
  * Pool de conexiones para la base de datos MariaDB.
  * Permite reutilizar conexiones para optimizar el rendimiento.
- * 
- * @type {mariadb.Pool}
  */
 export const pool = mariadb.createPool({
     host: process.env.DB_HOST,

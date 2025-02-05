@@ -15,11 +15,13 @@
 
 import bcrypt from 'bcrypt';
 import dayjs from 'dayjs';
+import jwt from 'jsonwebtoken';
 
-import { Request, Response } from 'express';
-import { generateJwtToken, generateToken } from '../utils/tokenUtils';
+import { Request, RequestHandler, Response } from 'express';
+import { generateJwtToken, generateRefreshToken, generateToken } from '../utils/tokenUtils';
 import { sendActivationEmail, sendPasswordResetEmail } from '../utils/emailUtils';
 import { createUser, findUserByToken, activateUserAccount, findUserByEmail, updateUserResetToken, findUserByResetToken, updateUserPassword } from '../services/authService';
+import redisClient from '../utils/redisClient';
 
 /**
  * Registra un nuevo usuario en el sistema.
@@ -153,16 +155,35 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        // Generar un token JWT
-        const token = generateJwtToken(user.id_user);
+        // Genera los tokens
+        const accessToken = generateJwtToken(user.id_user, '15m');
+        const refreshToken = generateRefreshToken(user.id_user, '7d');
 
+        // Almacena el refresh token en Redis con una expiración de 7 días (7*24*60*60 segundos)
+        await redisClient.set(refreshToken, user.id_user.toString(), {
+            EX: 7 * 24 * 60 * 60,
+        });
+
+        // Configura las cookies HTTP-Only
+        res.cookie('accessToken', accessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 15 * 60 * 1000,
+        });
+        res.cookie('refreshToken', refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        });
+  
         res.status(200).json({
             message: 'Login successful',
-            token,
             user: {
-                id: user.id_user,
-                email: user.email,
-                username: user.username,
+            id: user.id_user,
+            email: user.email,
+            username: user.username,
             },
         });
     } catch (error) {
@@ -170,6 +191,38 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
         res.status(500).json({ message: 'Server error' });
     }
 };
+
+/**
+ * Cierra la sesión de un usuario eliminando la cookie JWT.
+ * 
+ * @async
+ * @function logoutUser
+ * @param {Request} req - Objeto de solicitud de Express.
+ * @param {Response} res - Objeto de respuesta de Express.
+ * @returns {Promise<void>} Respuesta indicando que la sesión se ha cerrado correctamente.
+ */
+export const logoutUser = async (req: Request, res: Response): Promise<void> => {
+    const refreshToken = req.cookies.refreshToken;
+  
+    // Elimina el token de Redis si existe
+    if (refreshToken) {
+      await redisClient.del(refreshToken);
+    }
+  
+    // Limpia las cookies
+    res.clearCookie('accessToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
+  
+    res.status(200).json({ message: 'Logout successful' });
+  };
 
 /**
  * Solicita un restablecimiento de contraseña enviando un token por correo.
@@ -265,5 +318,99 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     } catch (error) {
         console.error('Error resetting password:', error);
         res.status(500).json({ message: 'Server error' });
+    }
+};
+
+/**
+ * Controlador para refrescar el token de acceso utilizando un refresh token válido.
+ * 
+ * @async
+ * @function refreshTokenController
+ * @param {Request} req - Objeto de solicitud de Express.
+ * @param {Response} res - Objeto de respuesta de Express.
+ * @returns {Promise<void>} Respuesta con un nuevo token de acceso si el refresh token es válido.
+ */
+export const refreshTokenController: RequestHandler = async (req: Request, res: Response, next): Promise<void> => {
+    const refreshToken = req.cookies.refreshToken;
+    if (!refreshToken) {
+      res.status(401).json({ message: 'Refresh token required' });
+      return;
+    }
+  
+    try {
+      const secret = process.env.JWT_REFRESH_SECRET || 'defaultrefreshsecret';
+      const decoded = jwt.verify(refreshToken, secret) as { userId: number };
+  
+      // Genera un nuevo access token (válido 15 minutos)
+      const newAccessToken = generateJwtToken(decoded.userId, '15m');
+  
+      // Configura la nueva cookie para el access token
+      res.cookie('accessToken', newAccessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 15 * 60 * 1000,
+      });
+  
+      res.status(200).json({ message: 'Access token refreshed', accessToken: newAccessToken });
+      return;
+    } catch (error) {
+      res.status(403).json({ message: 'Invalid refresh token' });
+      return;
+    }
+};
+
+/**
+ * Callback de autenticación con Google.
+ * 
+ * @async
+ * @function googleAuthCallback
+ * @param {Request} req - Objeto de solicitud de Express.
+ * @param {Response} res - Objeto de respuesta de Express.
+ * @returns {Promise<void>} Respuesta indicando el estado de la autenticación con Google.
+ */
+export const googleAuthCallback: RequestHandler = async (req: Request, res: Response): Promise<void> => {
+    const user = req.user as any;
+    if (!user) {
+      res.status(401).json({ message: 'User not found in Google callback' });
+      return;
+    }
+  
+    try {
+      // Generar access token (válido 15 minutos) y refresh token (válido 7 días)
+      const accessToken = generateJwtToken(user.id_user, '15m');
+      const refreshToken = generateRefreshToken(user.id_user, '7d');
+  
+      // Almacenar el refresh token en Redis con expiración de 7 días (7*24*60*60 segundos)
+      await redisClient.set(refreshToken, user.id_user.toString(), {
+        EX: 7 * 24 * 60 * 60,
+      });
+  
+      // Configurar las cookies HTTP-Only
+      res.cookie('accessToken', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 15 * 60 * 1000,
+      });
+      res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+  
+      // Enviar la respuesta
+      res.status(200).json({
+        message: 'Login successful',
+        user: {
+          id: user.id_user,
+          email: user.email,
+          username: user.username,
+        },
+      });
+    } catch (error) {
+      console.error('Error in Google auth callback:', error);
+      res.status(500).json({ message: 'Server error during Google authentication' });
     }
 };

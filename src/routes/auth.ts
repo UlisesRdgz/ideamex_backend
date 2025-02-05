@@ -13,10 +13,9 @@
 
 import { Router } from 'express';
 import { validateLogin, validatePasswordReset, validatePasswordResetRequest, validateRegistration, validateRequest } from '../middlewares/validationMiddleware';
-import { checkEmailExists } from '../middlewares/authMiddleware';
-import { activateUser, loginUser, registerUser, requestPasswordReset, resetPassword } from '../controllers/authController';
+import { checkEmailExists } from '../middlewares/checkEmailMiddleware';
+import { activateUser, googleAuthCallback, loginUser, logoutUser, refreshTokenController, registerUser, requestPasswordReset, resetPassword } from '../controllers/authController';
 import passport from 'passport';
-import { generateJwtToken } from '../utils/tokenUtils';
 
 const router = Router();
 
@@ -51,6 +50,24 @@ router.get('/activate', activateUser);
  * @controller {loginUser} Controlador para el inicio de sesión.
  */
 router.post('/login', validateLogin, validateRequest, loginUser);
+
+/**
+ * Cierra la sesión del usuario.
+ * 
+ * @name POST /logout
+ * @function
+ * @controller {logoutUser} Controlador para cerrar la sesión del usuario.
+ */
+router.post('/logout', logoutUser);
+
+/**
+ * Endpoint para refrescar el access token usando el refresh token.
+ * 
+ * @name POST /refresh
+ * @function
+ * @controller {refreshTokenController} Controlador para renovar el access token.
+ */
+router.post('/refresh', refreshTokenController);
 
 /**
  * Solicita un restablecimiento de contraseña.
@@ -97,22 +114,7 @@ router.get(
 router.get(
     '/google/callback',
     passport.authenticate('google', { session: false }),
-    (req, res) => {
-        const user = req.user as any;
-
-        // Generar token JWT
-        const token = generateJwtToken(user.id_user);
-
-        res.status(200).json({
-            message: 'Login successful',
-            token,
-            user: {
-                id: user.id_user,
-                email: user.email,
-                username: user.username,
-            },
-        });
-    }
+    googleAuthCallback
 );
 
 export default router;
