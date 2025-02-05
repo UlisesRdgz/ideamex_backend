@@ -28,9 +28,20 @@ export const generateToken = (): string => {
  * @param {number} userId - ID del usuario.
  * @returns {string} Token JWT firmado.
  */
-export const generateJwtToken = (userId: number): string => {
+export const generateJwtToken = (userId: number, expiresIn: string = '15m'): string => {
     const secret = process.env.JWT_SECRET || 'defaultsecret';
-    const expiresIn = process.env.JWT_EXPIRES_IN || '1h';
-
     return jwt.sign({ userId }, secret, { expiresIn });
-};
+  };
+
+/**
+ * Genera un refresh token JWT para el usuario.
+ * 
+ * @function generateRefreshToken
+ * @param {number} userId - ID del usuario.
+ * @param {string} [expiresIn] - Tiempo de expiración del refresh token (opcional).
+ * @returns {string} Refresh token JWT firmado.
+ */
+export const generateRefreshToken = (userId: number, expiresIn: string = '7d'): string => {
+    const secret = process.env.JWT_REFRESH_SECRET || 'defaultrefreshsecret';
+    return jwt.sign({ userId }, secret, { expiresIn });
+  };
