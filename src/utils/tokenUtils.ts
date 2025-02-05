@@ -7,7 +7,7 @@
  * 
  * @author Ulises Rodríguez García
  */
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions }  from 'jsonwebtoken';
 import { randomBytes } from 'crypto';
 
 /**
@@ -30,8 +30,9 @@ export const generateToken = (): string => {
  */
 export const generateJwtToken = (userId: number, expiresIn: string = '15m'): string => {
     const secret = process.env.JWT_SECRET || 'defaultsecret';
-    return jwt.sign({ userId }, secret, { expiresIn });
-  };
+    const options: SignOptions = { expiresIn };
+    return jwt.sign({ userId }, secret, options);
+};
 
 /**
  * Genera un refresh token JWT para el usuario.
@@ -43,5 +44,6 @@ export const generateJwtToken = (userId: number, expiresIn: string = '15m'): str
  */
 export const generateRefreshToken = (userId: number, expiresIn: string = '7d'): string => {
     const secret = process.env.JWT_REFRESH_SECRET || 'defaultrefreshsecret';
-    return jwt.sign({ userId }, secret, { expiresIn });
-  };
+    const options: SignOptions = { expiresIn };
+    return jwt.sign({ userId }, secret, options);
+};
