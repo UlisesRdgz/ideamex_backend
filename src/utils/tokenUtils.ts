@@ -26,9 +26,10 @@ export const generateToken = (): string => {
  * 
  * @function generateJwtToken
  * @param {number} userId - ID del usuario.
+ * @param {string | number} [expiresIn='15m'] - Tiempo de expiración del token JWT.
  * @returns {string} Token JWT firmado.
  */
-export const generateJwtToken = (userId: number, expiresIn: string = '15m'): string => {
+export const generateJwtToken = (userId: number, expiresIn: string | number = '15m'): string => {
     const secret = process.env.JWT_SECRET || 'defaultsecret';
     const options: SignOptions = { expiresIn };
     return jwt.sign({ userId }, secret, options);
@@ -39,10 +40,10 @@ export const generateJwtToken = (userId: number, expiresIn: string = '15m'): str
  * 
  * @function generateRefreshToken
  * @param {number} userId - ID del usuario.
- * @param {string} [expiresIn] - Tiempo de expiración del refresh token (opcional).
+ * @param {string | number} [expiresIn='7d'] - Tiempo de expiración del refresh token.
  * @returns {string} Refresh token JWT firmado.
  */
-export const generateRefreshToken = (userId: number, expiresIn: string = '7d'): string => {
+export const generateRefreshToken = (userId: number, expiresIn: string | number = '7d'): string => {
     const secret = process.env.JWT_REFRESH_SECRET || 'defaultrefreshsecret';
     const options: SignOptions = { expiresIn };
     return jwt.sign({ userId }, secret, options);
