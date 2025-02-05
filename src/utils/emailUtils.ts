@@ -29,7 +29,7 @@ export const sendActivationEmail = async (email: string, token: string) => {
         },
     });
 
-    const activationLink = `http://localhost:3000/api/auth/activate?token=${token}`;
+    const activationLink = `http://localhost:3000/api/v1/ideamex/auth/activate?token=${token}`;
 
     await transporter.sendMail({
         from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
@@ -62,7 +62,7 @@ export const sendPasswordResetEmail = async (email: string, token: string) => {
         },
     });
 
-    const resetLink = `http://localhost:3000/api/auth/reset-password?token=${token}`;
+    const resetLink = `http://localhost:3000/api/v1/ideamex/auth/reset-password?token=${token}`;
 
     await transporter.sendMail({
         from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
