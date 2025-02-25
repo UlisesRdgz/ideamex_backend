@@ -157,11 +157,11 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
 
         // Genera los tokens
         const accessToken = generateJwtToken(user.id_user, '15m');
-        const refreshToken = generateRefreshToken(user.id_user, '7d');
+        const refreshToken = generateRefreshToken(user.id_user, '1d');
 
-        // Almacena el refresh token en Redis con una expiración de 7 días (7*24*60*60 segundos)
+        // Almacena el refresh token en Redis con una expiración de 1 día (24*60*60 segundos)
         await redisClient.set(refreshToken, user.id_user.toString(), {
-            EX: 7 * 24 * 60 * 60,
+            EX: 24 * 60 * 60,
         });
 
         // Configura las cookies HTTP-Only
@@ -377,13 +377,13 @@ export const googleAuthCallback: RequestHandler = async (req: Request, res: Resp
     }
   
     try {
-      // Generar access token (válido 15 minutos) y refresh token (válido 7 días)
+      // Generar access token (válido 15 minutos) y refresh token (válido 1 día)
       const accessToken = generateJwtToken(user.id_user, '15m');
-      const refreshToken = generateRefreshToken(user.id_user, '7d');
+      const refreshToken = generateRefreshToken(user.id_user, '1d');
   
-      // Almacenar el refresh token en Redis con expiración de 7 días (7*24*60*60 segundos)
+      // Almacenar el refresh token en Redis con expiración de 1 día (24*60*60 segundos)
       await redisClient.set(refreshToken, user.id_user.toString(), {
-        EX: 7 * 24 * 60 * 60,
+        EX: 24 * 60 * 60,
       });
   
       // Configurar las cookies HTTP-Only
