@@ -9,6 +9,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
+import { sendErrorResponse } from '../utils/responseUtils';
 
 /**
  * Middleware para proteger Swagger con autenticación.
@@ -25,7 +26,7 @@ export const swaggerAuth = (req: Request, res: Response, next: NextFunction): vo
 
     if (!authHeader) {
         res.setHeader('WWW-Authenticate', 'Basic');
-        res.status(401).json({ message: 'Authentication required' });
+        sendErrorResponse(res, 'Authentication required', null, 401);
         return;
     }
 
@@ -38,5 +39,5 @@ export const swaggerAuth = (req: Request, res: Response, next: NextFunction): vo
         return;
     }
 
-    res.status(403).json({ message: 'Forbidden: Invalid credentials' });
+    sendErrorResponse(res, 'Forbidden: Invalid credentials', null, 403);
 };

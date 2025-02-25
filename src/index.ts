@@ -33,6 +33,7 @@ import passport from './config/passportConfig';
 import swaggerOptions from './config/swagger';
 import { swaggerAuth } from './middlewares/swaggerAuthMiddleware';
 import protectedRoutes from './routes/protected';
+import { sendErrorResponse } from './utils/responseUtils';
 
 // Carga las variables de entorno
 dotenv.config();
@@ -99,7 +100,8 @@ app.get(`${BASE_PATH}`, (req: Request, res: Response) => {
  */
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     console.error('Unhandled Error:', err);
-    res.status(500).json({ message: 'Internal Server Error' });
+    const statusCode = err.statusCode || 500;
+    sendErrorResponse(res, err.message || 'Internal Server Error', err.errors, statusCode);
 });
 
 // Inicia el servidor
