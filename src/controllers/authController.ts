@@ -22,6 +22,7 @@ import { generateJwtToken, generateRefreshToken, generateToken } from '../utils/
 import { sendActivationEmail, sendPasswordResetEmail } from '../utils/emailUtils';
 import { createUser, findUserByToken, activateUserAccount, findUserByEmail, updateUserResetToken, findUserByResetToken, updateUserPassword } from '../services/authService';
 import redisClient from '../utils/redisClient';
+import { sendErrorResponse, sendSuccessResponse } from '../utils/responseUtils';
 
 /**
  * Registra un nuevo usuario en el sistema.
@@ -38,9 +39,8 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
 
     try {
         const hashedPassword = await bcrypt.hash(password, 12);
-
-        const activationToken = generateToken(); 
-        const tokenExpiration = dayjs().add(24, 'hour').toDate(); 
+        const activationToken = generateToken();
+        const tokenExpiration = dayjs().add(24, 'hour').toDate();
 
         const newUser = await createUser({
             email,
@@ -55,21 +55,21 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
             await sendActivationEmail(email, activationToken);
         } catch (emailError) {
             console.error('Error sending email:', emailError);
-            res.status(500).json({ message: 'Failed to send activation email' });
+            sendErrorResponse(res, 'Failed to send activation email', null, 500);
             return;
         }
 
-        res.status(201).json({
-            message: 'User registered successfully. Please check your email to activate your account.',
-            user: { id: newUser.id, email: newUser.email },
-        });
+        sendSuccessResponse(res, 'User registered successfully. Please check your email to activate your account.', {
+            id: newUser.id,
+            email: newUser.email,
+        }, 201);
     } catch (error) {
         if (error instanceof Error) {
             console.error('Error in registerUser:', error.message);
-            res.status(500).json({ message: 'Server error', error: error.message });
+            sendErrorResponse(res, 'Server error', error.message, 500);
         } else {
             console.error('Unexpected error in registerUser:', error);
-            res.status(500).json({ message: 'Server error', error: 'Unexpected error occurred' });
+            sendErrorResponse(res, 'Server error', 'Unexpected error occurred', 500);
         }
     }
 };
@@ -87,7 +87,7 @@ export const activateUser = async (req: Request, res: Response): Promise<void> =
     const { token } = req.query;
 
     if (!token || typeof token !== 'string') {
-        res.status(400).json({ message: 'Invalid or missing token' });
+        sendErrorResponse(res, 'Invalid or missing token', null, 400);
         return;
     }
 
@@ -96,20 +96,19 @@ export const activateUser = async (req: Request, res: Response): Promise<void> =
         console.log('User found:', user);
 
         if (!user) {
-            res.status(404).json({ message: 'Invalid activation token' });
+            sendErrorResponse(res, 'Invalid activation token', null, 404);
             return;
         }
 
         await activateUserAccount(user.id_user);
-
-        res.status(200).json({ message: 'Account activated successfully' });
+        sendSuccessResponse(res, 'Account activated successfully');
     } catch (error) {
         if (error instanceof Error) {
             console.error('Error activating user:', error.message);
-            res.status(500).json({ message: 'Server error', error: error.message });
+            sendErrorResponse(res, 'Server error', error.message, 500);
         } else {
             console.error('Unexpected error activating user:', error);
-            res.status(500).json({ message: 'Server error', error: 'Unexpected error occurred' });
+            sendErrorResponse(res, 'Server error', 'Unexpected error occurred', 500);
         }
     }
 };
@@ -130,28 +129,26 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
         // Verificar si el usuario existe
         const user = await findUserByEmail(email);
         if (!user) {
-            res.status(401).json({ message: 'Invalid email or password' });
+            sendErrorResponse(res, 'Invalid email or password', null, 401);
             return;
         }
 
         // Verificar si la cuenta está activada
         if (user.activation !== 1) {
-            res.status(403).json({ message: 'Account not activated. Please check your email to activate your account.' });
+            sendErrorResponse(res, 'Account not activated. Please check your email to activate your account.', null, 403);
             return;
         }
 
         // Si el usuario se registró con Google, bloquear el inicio de sesión con contraseña
         if (user.auth_provider === 'google') {
-            res.status(403).json({
-                message: 'This account is registered with Google. Please use Google login.',
-            });
+            sendErrorResponse(res, 'This account is registered with Google. Please use Google login.', null, 403);
             return;
         }
 
         // Verificar la contraseña
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
-            res.status(401).json({ message: 'Invalid email or password' });
+            sendErrorResponse(res, 'Invalid email or password', null, 401);
             return;
         }
 
@@ -175,20 +172,17 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
+            maxAge: 24 * 60 * 60 * 1000,
         });
-  
-        res.status(200).json({
-            message: 'Login successful',
-            user: {
+
+        sendSuccessResponse(res, 'Login successful', {
             id: user.id_user,
             email: user.email,
             username: user.username,
-            },
         });
     } catch (error) {
         console.error('Error during login:', error);
-        res.status(500).json({ message: 'Server error' });
+        sendErrorResponse(res, 'Server error', null, 500);
     }
 };
 
@@ -206,23 +200,23 @@ export const logoutUser = async (req: Request, res: Response): Promise<void> => 
   
     // Elimina el token de Redis si existe
     if (refreshToken) {
-      await redisClient.del(refreshToken);
+        await redisClient.del(refreshToken);
     }
   
     // Limpia las cookies
     res.clearCookie('accessToken', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
     });
     res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
     });
-  
-    res.status(200).json({ message: 'Logout successful' });
-  };
+
+    sendSuccessResponse(res, 'Logout successful');
+};
 
 /**
  * Solicita un restablecimiento de contraseña enviando un token por correo.
@@ -239,21 +233,19 @@ export const requestPasswordReset = async (req: Request, res: Response): Promise
     try {
         const user = await findUserByEmail(email);
         if (!user) {
-            res.status(404).json({ message: 'Email not found' });
+            sendErrorResponse(res, 'Email not found', null, 404);
             return;
         }
 
         // Verificar si la cuenta está activa
         if (user.activation !== 1) {
-            res.status(403).json({ message: 'Account not activated. Please activate your account first.' });
+            sendErrorResponse(res, 'Account not activated. Please activate your account first.', null, 403);
             return;
         }
 
         // Si el usuario se registró con Google, bloquear el inicio de sesión con contraseña
         if (user.auth_provider === 'google') {
-            res.status(403).json({
-                message: 'This account is registered with Google. Please use Google login.',
-            });
+            sendErrorResponse(res, 'This account is registered with Google. Please use Google login.', null, 403);
             return;
         }
 
@@ -263,10 +255,10 @@ export const requestPasswordReset = async (req: Request, res: Response): Promise
         await updateUserResetToken(user.id_user, resetToken, tokenExpiration);
         await sendPasswordResetEmail(email, resetToken);
 
-        res.status(200).json({ message: 'Password reset token sent to email' });
+        sendSuccessResponse(res, 'Password reset token sent to email');
     } catch (error) {
         console.error('Error requesting password reset:', error);
-        res.status(500).json({ message: 'Server error' });
+        sendErrorResponse(res, 'Server error', null, 500);
     }
 };
 
@@ -280,31 +272,31 @@ export const requestPasswordReset = async (req: Request, res: Response): Promise
  * @returns {Promise<void>} Respuesta indicando si la contraseña fue restablecida correctamente.
  */
 export const resetPassword = async (req: Request, res: Response): Promise<void> => {
-    const { token, password, confirmPassword } = req.body;                
+    const { token, password, confirmPassword } = req.body;
 
     try {
         // Validar que las contraseñas coincidan
         if (password !== confirmPassword) {
-            res.status(400).json({ message: 'Passwords do not match' });
+            sendErrorResponse(res, 'Passwords do not match', null, 400);
             return;
         }
 
         // Validar que la nueva contraseña no esté vacía
         if (!password) {
-            res.status(400).json({ message: 'New password is required' });
+            sendErrorResponse(res, 'New password is required', null, 400);
             return;
         }
 
         // Buscar al usuario asociado al token
         const user = await findUserByResetToken(token);
         if (!user || new Date(user.token_expiration) < new Date()) {
-            res.status(400).json({ message: 'Invalid or expired token' });
+            sendErrorResponse(res, 'Invalid or expired token', null, 400);
             return;
         }
 
         // Verificar si la cuenta está activa
         if (user.activation !== 1) {
-            res.status(403).json({ message: 'Account not activated. Please activate your account first.' });
+            sendErrorResponse(res, 'Account not activated. Please activate your account first.', null, 403);
             return;
         }
 
@@ -314,10 +306,10 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
         // Actualizar la contraseña en la base de datos
         await updateUserPassword(user.id_user, hashedPassword);
 
-        res.status(200).json({ message: 'Password updated successfully' });
+        sendSuccessResponse(res, 'Password updated successfully');
     } catch (error) {
         console.error('Error resetting password:', error);
-        res.status(500).json({ message: 'Server error' });
+        sendErrorResponse(res, 'Server error', null, 500);
     }
 };
 
@@ -333,30 +325,28 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
 export const refreshTokenController: RequestHandler = async (req: Request, res: Response, next): Promise<void> => {
     const refreshToken = req.cookies.refreshToken;
     if (!refreshToken) {
-      res.status(401).json({ message: 'Refresh token required' });
-      return;
+        sendErrorResponse(res, 'Refresh token required', null, 401);
+        return;
     }
-  
+
     try {
-      const secret = process.env.JWT_REFRESH_SECRET || 'defaultrefreshsecret';
-      const decoded = jwt.verify(refreshToken, secret) as { userId: number };
-  
-      // Genera un nuevo access token (válido 15 minutos)
-      const newAccessToken = generateJwtToken(decoded.userId, '15m');
-  
-      // Configura la nueva cookie para el access token
-      res.cookie('accessToken', newAccessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 15 * 60 * 1000,
-      });
-  
-      res.status(200).json({ message: 'Access token refreshed', accessToken: newAccessToken });
-      return;
+        const secret = process.env.JWT_REFRESH_SECRET || 'defaultrefreshsecret';
+        const decoded = jwt.verify(refreshToken, secret) as { userId: number };
+
+        // Genera un nuevo access token (válido 15 minutos)
+        const newAccessToken = generateJwtToken(decoded.userId, '15m');
+
+        // Configura la nueva cookie para el access token
+        res.cookie('accessToken', newAccessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 15 * 60 * 1000,
+        });
+
+        sendSuccessResponse(res, 'Access token refreshed', { accessToken: newAccessToken });
     } catch (error) {
-      res.status(403).json({ message: 'Invalid refresh token' });
-      return;
+        sendErrorResponse(res, 'Invalid refresh token', null, 403);
     }
 };
 
@@ -372,45 +362,42 @@ export const refreshTokenController: RequestHandler = async (req: Request, res: 
 export const googleAuthCallback: RequestHandler = async (req: Request, res: Response): Promise<void> => {
     const user = req.user as any;
     if (!user) {
-      res.status(401).json({ message: 'User not found in Google callback' });
-      return;
+        sendErrorResponse(res, 'User not found in Google callback', null, 401);
+        return;
     }
-  
+
     try {
-      // Generar access token (válido 15 minutos) y refresh token (válido 1 día)
-      const accessToken = generateJwtToken(user.id_user, '15m');
-      const refreshToken = generateRefreshToken(user.id_user, '1d');
-  
-      // Almacenar el refresh token en Redis con expiración de 1 día (24*60*60 segundos)
-      await redisClient.set(refreshToken, user.id_user.toString(), {
-        EX: 24 * 60 * 60,
-      });
-  
-      // Configurar las cookies HTTP-Only
-      res.cookie('accessToken', accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 15 * 60 * 1000,
-      });
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
-  
-      // Enviar la respuesta
-      res.status(200).json({
-        message: 'Login successful',
-        user: {
-          id: user.id_user,
-          email: user.email,
-          username: user.username,
-        },
-      });
+        // Generar access token (válido 15 minutos) y refresh token (válido 1 día)
+        const accessToken = generateJwtToken(user.id_user, '15m');
+        const refreshToken = generateRefreshToken(user.id_user, '1d');
+
+        // Almacenar el refresh token en Redis con expiración de 1 día (24*60*60 segundos)
+        await redisClient.set(refreshToken, user.id_user.toString(), {
+            EX: 24 * 60 * 60,
+        });
+
+        // Configurar las cookies HTTP-Only
+        res.cookie('accessToken', accessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 15 * 60 * 1000,
+        });
+        res.cookie('refreshToken', refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 24 * 60 * 60 * 1000,
+        });
+
+        // Enviar la respuesta
+        sendSuccessResponse(res, 'Login successful', {
+            id: user.id_user,
+            email: user.email,
+            username: user.username,
+        });
     } catch (error) {
-      console.error('Error in Google auth callback:', error);
-      res.status(500).json({ message: 'Server error during Google authentication' });
+        console.error('Error in Google auth callback:', error);
+        sendErrorResponse(res, 'Server error during Google authentication', null, 500);
     }
 };
