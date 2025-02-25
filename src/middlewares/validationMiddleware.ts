@@ -90,3 +90,52 @@ export const validatePasswordReset = [
         .withMessage('Token is required'),
     ...passwordValidationRules(),
 ];
+
+/**
+ * Reglas de validación para el formulario de contacto.
+ */
+export const validateContactForm = [
+    // Sanitización y validación del campo 'fullName'
+    body('fullName')
+        .notEmpty()
+        .withMessage('Full name is required')
+        .isLength({ max: 255 })
+        .withMessage('Full name must be less than 255 characters')
+        .trim() 
+        .escape(),
+
+    // Sanitización y validación del campo 'email'
+    body('email')
+        .notEmpty()
+        .withMessage('Email is required')
+        .isEmail()
+        .withMessage('Invalid email address')
+        .normalizeEmail(),
+
+    // Sanitización y validación del campo 'phone'
+    body('phone')
+        .notEmpty()
+        .withMessage('Phone number is required')
+        .isMobilePhone('any')
+        .withMessage('Invalid phone number')
+        .trim() 
+        .escape(),
+
+    // Sanitización y validación del campo 'subject'
+    body('subject')
+        .notEmpty()
+        .withMessage('Subject is required')
+        .isLength({ max: 255 })
+        .withMessage('Subject must be less than 255 characters')
+        .trim() 
+        .escape(),
+
+    // Sanitización y validación del campo 'message'
+    body('message')
+        .notEmpty()
+        .withMessage('Message is required')
+        .isLength({ max: 1000 })
+        .withMessage('Message must be less than 1000 characters')
+        .trim() 
+        .escape(),
+];
