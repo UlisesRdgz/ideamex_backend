@@ -34,6 +34,7 @@ import swaggerOptions from './config/swagger';
 import { swaggerAuth } from './middlewares/swaggerAuthMiddleware';
 import protectedRoutes from './routes/protected';
 import { sendErrorResponse } from './utils/responseUtils';
+import contactRoutes from './routes/contactRoutes';
 
 // Carga las variables de entorno
 dotenv.config();
@@ -75,6 +76,9 @@ app.use(`${BASE_PATH}/docs`, swaggerAuth, swaggerUi.serve, swaggerUi.setup(swagg
 
 // Rutas de autenticación
 app.use(`${BASE_PATH}/auth`, authRoutes);
+
+// Rutas de contacto
+app.use(`${BASE_PATH}/contact`, contactRoutes);
 
 // Agrega las rutas protegidas
 app.use(`${BASE_PATH}/protected`, protectedRoutes);
