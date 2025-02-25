@@ -11,6 +11,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { findUserByEmail } from '../services/authService';
+import { sendErrorResponse } from '../utils/responseUtils';
 
 /**
  * Middleware que verifica si un correo electrónico ya está registrado en la base de datos.
@@ -28,13 +29,13 @@ export const checkEmailExists = async (req: Request, res: Response, next: NextFu
     try {
         const existingUser = await findUserByEmail(email);
         if (existingUser) {
-            res.status(400).json({ message: 'User already exists' });
+            sendErrorResponse(res, 'User already exists', null, 400);
             return;
         }
 
         next(); 
     } catch (error) {
         console.error('Error checking email:', error);
-        res.status(500).json({ message: 'Server error while checking email' });
+        sendErrorResponse(res, 'Server error while checking email', null, 500);
     }
 };

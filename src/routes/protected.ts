@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middlewares/authMiddleware';
+import { sendSuccessResponse } from '../utils/responseUtils';
 
 const router = Router();
 
@@ -13,9 +14,8 @@ const router = Router();
  * @returns {Object} Mensaje y datos opcionales del usuario.
  */
 router.get('/test', requireAuth, (req: Request, res: Response) => {
-  res.status(200).json({
-    message: 'Acceso autorizado: estás autenticado.',
-    user: req.user,
+  sendSuccessResponse(res, 'Acceso autorizado: estás autenticado.', {
+      user: req.user,
   });
 });
 

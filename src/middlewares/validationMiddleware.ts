@@ -11,6 +11,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { validationResult, body } from 'express-validator';
+import { sendErrorResponse } from '../utils/responseUtils';
 
 /**
  * Middleware que valida el resultado de las comprobaciones realizadas sobre la solicitud.
@@ -25,7 +26,7 @@ import { validationResult, body } from 'express-validator';
 export const validateRequest = (req: Request, res: Response, next: NextFunction): void => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        res.status(400).json({ errors: errors.array() });
+        sendErrorResponse(res, 'Validation failed', errors.array(), 400);
         return;
     }
     next();

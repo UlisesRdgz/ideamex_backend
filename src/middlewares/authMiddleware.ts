@@ -11,6 +11,7 @@
 
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
+import { sendErrorResponse } from '../utils/responseUtils';
 
 /**
  * Middleware de autenticación que verifica la validez del token JWT.
@@ -22,8 +23,8 @@ import jwt from 'jsonwebtoken';
 export const requireAuth: RequestHandler = (req: Request, res: Response, next: NextFunction) => {
   const token = req.cookies.token;
   if (!token) {
-    res.status(401).json({ message: 'Unauthorized: No token provided' });
-    return;
+      sendErrorResponse(res, 'Unauthorized: No token provided', null, 401);
+      return;
   }
 
   try {
@@ -32,7 +33,6 @@ export const requireAuth: RequestHandler = (req: Request, res: Response, next: N
     req.user = decoded;
     next();
   } catch (error) {
-    res.status(401).json({ message: 'Unauthorized: Invalid token' });
-    return; 
+      sendErrorResponse(res, 'Unauthorized: Invalid or expired token', null, 401);
   }
 };
