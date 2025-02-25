@@ -41,10 +41,10 @@ export const generateJwtToken = (userId: number, expiresIn: StringValue | number
  * 
  * @function generateRefreshToken
  * @param {number} userId - ID del usuario.
- * @param {StringValue | number} [expiresIn='7d'] - Tiempo de expiración del refresh token.
+ * @param {StringValue | number} [expiresIn='1d'] - Tiempo de expiración del refresh token.
  * @returns {string} Refresh token JWT firmado.
  */
-export const generateRefreshToken = (userId: number, expiresIn: StringValue | number = '7d'): string => {
+export const generateRefreshToken = (userId: number, expiresIn: StringValue | number = '1d'): string => {
     const secret = process.env.JWT_REFRESH_SECRET || 'defaultrefreshsecret';
     const options: SignOptions = { expiresIn };
     return jwt.sign({ userId }, secret, options);
