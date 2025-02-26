@@ -79,59 +79,139 @@ function getHTMLTemplate(activationLink: string): string {
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        .email-body {
+            background-color: #f1f1f1 !important;
+            margin: 0;
+            padding: 20px 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .card-container {
+            width: 90%;
+            max-width: 600px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.1) !important;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .hero-section {
+            background: #03355a;
+            border-radius: 16px 16px 0 0;
+            padding: 16px;
+            display: flex;
+            align-items: start;
+            justify-content: center;
+        }
+
+        .hero-section img {
+            width: 40px;
+            margin-right: 8px;
+        }
+
+        .hero-section h1 {
+            color: white;
+            font-size: 24px;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0; 
+        }
+
+        .content-section {
+            padding: 20px;
+        }
+
+        .welcome-title {
+            font-size: 24px;
+            font-weight: 600;
+            font-family: Tahoma, sans-serif;
+            color: #03355a;
+            margin-bottom: 16px;
+        }
+
+        .welcome-title span.ideamex {
+            color: #03355a;
+        }
+
+        .welcome-title span.idea {
+            color: #d59f0f;
+        }
+
+        .instruction-text {
+            font-size: 16px;
+            font-family: Tahoma, sans-serif;
+            color: #333;
+            margin: 0 0 16px 0;
+            line-height: 1.5;
+        }
+
+        .activation-button {
+            display: inline-block;
+            background-color: #03355a;
+            color: white !important;
+            font-size: 16px;
+            font-weight: bold;
+            font-family: Tahoma, sans-serif;
+            padding: 12px 24px;
+            border-radius: 16px;
+            text-decoration: none;
+            margin: 16px 0;
+        }
+
+        @media (max-width: 600px) {
+            .hero-section h1 {
+                margin-top: 8px;
+                font-size: 20px;
+                font-family: Arial, sans-serif;
+            }
+
+            .welcome-title {
+                font-size: 20px;
+                font-family: Tahoma, sans-serif;
+            }
+
+            .instruction-text {
+                font-size: 14px;
+                font-family: Tahoma, sans-serif;
+            }
+
+            .activation-button {
+                font-size: 14px;
+                padding: 10px 20px;
+            }
+        }
+    </style>
 </head>
-<body style="background-color: #f1f1f1; margin: 0; padding: 20px 0; display: flex; justify-content: center; align-items: center;">
+<body class="email-body">
     <!-- Card Container -->
-    <div style="width: 80%; background: white; border-radius: 16px; box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 1); margin: 0 auto; text-align: center;">
-        
+    <div class="card-container">
         <!-- Hero Section -->
-        <table width="100%" cellpadding="0" cellspacing="0" style="background: #03355a; border-radius: 16px 16px 0 0;">
-            <tr>
-                <!-- Logo Column -->
-                <td width="10%" style="padding: 16px; padding-right: 4px; vertical-align: middle;">
-                    <img src="https://i.postimg.cc/jjLvcyqj/ideamex-logo.png" alt="IDEAMEX" width="40" style="display: block; margin: 0 auto;">
-                </td>
-                
-                <!-- Title Column -->
-                <td width="80%" style="text-align: start;">
-                    <h1 style="color: white; font-size: 24px; font-family: Arial, sans-serif; margin: 0;">
-                        IDEAMEX
-                    </h1>
-                </td>
-            </tr>
-        </table>
+        <div class="hero-section">
+            <img src="https://i.postimg.cc/jjLvcyqj/ideamex-logo.png" alt="IDEAMEX">
+            <h1>IDEAMEX</h1>
+        </div>
 
         <!-- Content Section -->
-        <table width="100%" cellpadding="0" cellspacing="0">
-            <tr>
-                <td style="padding: 20px 0; text-align: center;">
-                    <!-- Welcome Title -->
-                    <div style="font-size: 24px; font-weight: 600; font-family: Tahoma, sans-serif; color: #03355a; margin-bottom: 16px;">
-                        ¡Bienvenido a <span style="color: #d59f0f;">IDEA</span><span style="color: #03355a;">MEX</span>!
-                    </div>
+        <div class="content-section">
+            <!-- Welcome Title -->
+            <div class="welcome-title">
+                ¡Bienvenido a <span class="idea">IDEA</span><span class="ideamex">MEX</span>!
+            </div>
 
-                    <!-- Instruction Text -->
-                    <p style="font-size: 16px; font-family: Tahoma, sans-serif; color: #333; margin: 0 29px 16px; line-height: 1.5;">
-                        A continuación, haz clic en el siguiente botón para activar tu cuenta:
-                    </p>
+            <!-- Instruction Text -->
+            <p class="instruction-text">
+                A continuación, haz clic en el siguiente botón para activar tu cuenta:
+            </p>
 
-                    <!-- Activation Button -->
-                    <a href="${activationLink}"
-                       style="display: inline-block; 
-                              background-color: #03355a; 
-                              color: white; 
-                              font-size: 16px; 
-                              font-weight: bold; 
-                              font-family: Tahoma, sans-serif; 
-                              padding: 12px 24px; 
-                              border-radius: 16px; 
-                              text-decoration: none; 
-                              margin: 16px 0;">
-                        Activar cuenta
-                    </a>
-                </td>
-            </tr>
-        </table>
+            <!-- Activation Button -->
+            <a href="${activationLink}" class="activation-button">
+                Activar cuenta
+            </a>
+        </div>
     </div>
 </body>
 </html>
