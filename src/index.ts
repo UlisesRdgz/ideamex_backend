@@ -35,6 +35,7 @@ import { swaggerAuth } from './middlewares/swaggerAuthMiddleware';
 import protectedRoutes from './routes/protected';
 import { sendErrorResponse } from './utils/responseUtils';
 import contactRoutes from './routes/contactRoutes';
+import rateLimit from 'express-rate-limit';
 
 // Carga las variables de entorno
 dotenv.config();
@@ -71,6 +72,15 @@ pool.getConnection()
 // Configuración de Swagger
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 
+/**
+ * Limitar a 5 solicitudes por IP cada 15 minutos
+ */
+const contactLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, 
+    max: 5,
+    message: 'Too many contact requests from this IP, please try again later.',
+});
+
 // Rutas protegidas para Swagger
 app.use(`${BASE_PATH}/docs`, swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
@@ -78,7 +88,7 @@ app.use(`${BASE_PATH}/docs`, swaggerAuth, swaggerUi.serve, swaggerUi.setup(swagg
 app.use(`${BASE_PATH}/auth`, authRoutes);
 
 // Rutas de contacto
-app.use(`${BASE_PATH}/contact`, contactRoutes);
+app.use(`${BASE_PATH}/contact`, contactLimiter, contactRoutes);
 
 // Agrega las rutas protegidas
 app.use(`${BASE_PATH}/protected`, protectedRoutes);
