@@ -118,7 +118,8 @@ function getHTMLTemplate(activationLink: string): string {
             font-size: 24px;
             font-family: Arial, sans-serif;
             margin: 0;
-            padding: 0; 
+            padding: 0;
+            padding-top: 4px; 
         }
 
         .content-section {
