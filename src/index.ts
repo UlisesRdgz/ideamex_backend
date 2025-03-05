@@ -10,10 +10,17 @@
  * @requires morgan
  * @requires swagger-jsdoc
  * @requires swagger-ui-express
+ * @requires cookie-parser
+ * @requires passport
+ * @requires express-rate-limit
  * @requires ./routes/auth
+ * @requires ./routes/protected
+ * @requires ./routes/contactRoutes
  * @requires ./config/db
  * @requires ./config/swagger
- * @requires ./middlewares/basicAuthMiddleware
+ * @requires ./config/passportConfig
+ * @requires ./middlewares/swaggerAuthMiddleware
+ * @requires ./utils/responseUtils
  * 
  * @author Ulises Rodríguez García
  */
@@ -28,7 +35,7 @@ import swaggerUi from 'swagger-ui-express';
 import cookieParser from 'cookie-parser';
 
 import authRoutes from './routes/auth';
-import { pool } from './config/db';
+import { checkDatabaseConnection, pool } from './config/db';
 import passport from './config/passportConfig';
 import swaggerOptions from './config/swagger';
 import { swaggerAuth } from './middlewares/swaggerAuthMiddleware';
@@ -40,9 +47,8 @@ import rateLimit from 'express-rate-limit';
 // Carga las variables de entorno
 dotenv.config();
 
+// Configuración de la aplicación
 const app: Application = express();
-
-// Carga configuraciones desde el .env
 const PORT: number = parseInt(process.env.PORT || '3000', 10);
 const BASE_PATH: string = process.env.BASE_PATH || '/api';
 
@@ -51,6 +57,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(helmet());
 app.use(cors());
+
 if (process.env.NODE_ENV !== 'production') {
     app.use(morgan('dev'));
 }
@@ -59,38 +66,27 @@ if (process.env.NODE_ENV !== 'production') {
 app.use(passport.initialize());
 
 // Verifica la conexión a la base de datos
-pool.getConnection()
-    .then(conn => {
-        console.log('Connected to MariaDB!');
-        conn.release();
-    })
-    .catch(err => {
-        console.error('Database connection error:', err);
-        process.exit(1);
-    });
+checkDatabaseConnection();
 
 // Configuración de Swagger
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
-
-/**
- * Limitar a 5 solicitudes por IP cada 15 minutos
- */
-const contactLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, 
-    max: 5,
-    message: 'Too many contact requests from this IP, please try again later.',
-});
-
-// Rutas protegidas para Swagger
 app.use(`${BASE_PATH}/docs`, swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// Rutas de autenticación
+/**
+ * Middleware de limitación de solicitudes para evitar spam en la ruta de contacto.
+ * Limita a 2 solicitudes por IP cada 15 minutos.
+ */
+const contactLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 2,
+    handler: (req: Request, res: Response) => {
+        sendErrorResponse(res, 'Has alcanzado el límite de solicitudes. Inténtalo de nuevo más tarde.', null, 429);
+    },
+});
+
+// Definición de rutas
 app.use(`${BASE_PATH}/auth`, authRoutes);
-
-// Rutas de contacto
 app.use(`${BASE_PATH}/contact`, contactLimiter, contactRoutes);
-
-// Agrega las rutas protegidas
 app.use(`${BASE_PATH}/protected`, protectedRoutes);
 
 /**
