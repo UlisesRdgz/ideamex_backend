@@ -8,7 +8,7 @@
  * @author Ulises Rodríguez García
  */
 
-import nodemailer from "nodemailer";
+import nodemailer from 'nodemailer';
 
 /**
  * Envía un correo de activación al usuario con un enlace para activar su cuenta.
@@ -22,7 +22,7 @@ import nodemailer from "nodemailer";
 export const sendActivationEmail = async (email: string, token: string) => {
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || "587"),
+    port: parseInt(process.env.SMTP_PORT || '587'),
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASSWORD,
@@ -34,7 +34,7 @@ export const sendActivationEmail = async (email: string, token: string) => {
   await transporter.sendMail({
     from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
     to: email,
-    subject: "Activate your IDEAMEX Account",
+    subject: 'Activate your IDEAMEX Account',
     html: getHTMLTemplate(activationLink),
   });
 };
@@ -51,7 +51,7 @@ export const sendActivationEmail = async (email: string, token: string) => {
 export const sendPasswordResetEmail = async (email: string, token: string) => {
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || "587"),
+    port: parseInt(process.env.SMTP_PORT || '587'),
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASSWORD,
@@ -63,7 +63,7 @@ export const sendPasswordResetEmail = async (email: string, token: string) => {
   await transporter.sendMail({
     from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
     to: email,
-    subject: "Password reset request",
+    subject: 'Password reset request',
     html: `
             <h1>Password reset</h1>
             <p>Click the link below to reset your password:</p>
