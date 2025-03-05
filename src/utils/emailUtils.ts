@@ -9,6 +9,7 @@
  */
 
 import nodemailer from 'nodemailer';
+import { emailTransporter } from '../config/email';
 
 /**
  * Envía un correo de activación al usuario con un enlace para activar su cuenta.
@@ -20,23 +21,14 @@ import nodemailer from 'nodemailer';
  * @throws {Error} Si ocurre un problema al enviar el correo.
  */
 export const sendActivationEmail = async (email: string, token: string) => {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASSWORD,
-    },
-  });
+    const activationLink = `http://localhost:3000/api/v1/ideamex/auth/activate?token=${token}`;
 
-  const activationLink = `http://localhost:3000/api/v1/ideamex/auth/activate?token=${token}`;
-
-  await transporter.sendMail({
-    from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
-    to: email,
-    subject: 'Activate your IDEAMEX Account',
-    html: getHTMLTemplate(activationLink),
-  });
+    await emailTransporter.sendMail({
+        from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
+        to: email,
+        subject: 'Activate your IDEAMEX Account',
+        html: getHTMLTemplate(activationLink),
+    });
 };
 
 /**
@@ -49,27 +41,18 @@ export const sendActivationEmail = async (email: string, token: string) => {
  * @throws {Error} Error al configurar el transporte de correo o al enviar el correo electrónico.
  */
 export const sendPasswordResetEmail = async (email: string, token: string) => {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASSWORD,
-    },
-  });
+    const resetLink = `http://localhost:3000/api/v1/ideamex/auth/reset-password?token=${token}`;
 
-  const resetLink = `http://localhost:3000/api/v1/ideamex/auth/reset-password?token=${token}`;
-
-  await transporter.sendMail({
-    from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
-    to: email,
-    subject: 'Password reset request',
-    html: `
+    await emailTransporter.sendMail({
+        from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
+        to: email,
+        subject: 'Password reset request',
+        html: `
             <h1>Password reset</h1>
             <p>Click the link below to reset your password:</p>
             <a href="${resetLink}">${resetLink}</a>
         `,
-  });
+    });
 };
 
 function getHTMLTemplate(activationLink: string): string {
