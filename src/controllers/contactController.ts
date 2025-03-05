@@ -16,6 +16,7 @@ import { Request, Response } from 'express';
 import { sendErrorResponse, sendSuccessResponse } from '../utils/responseUtils';
 import { pool } from '../config/db';
 import nodemailer from 'nodemailer';
+import { emailTransporter } from '../config/email';
 
 /**
  * Maneja la solicitud de contacto enviada desde la página de contacto.
@@ -30,7 +31,6 @@ export const submitContactForm = async (req: Request, res: Response): Promise<vo
     const { fullName, email, phone, subject, message } = req.body;
 
     try {
-        // Validar que todos los campos estén presentes
         if (!fullName || !email || !phone || !subject || !message) {
             sendErrorResponse(res, 'All fields are required', null, 400);
             return;
@@ -46,17 +46,8 @@ export const submitContactForm = async (req: Request, res: Response): Promise<vo
         await conn.query(query, [fullName, email, phone, subject, message]);
         conn.release();
 
-        // Enviar correo electrónico a ideamex.unam@gmail.com
-        const transporter = nodemailer.createTransport({
-            host: process.env.SMTP_HOST,
-            port: parseInt(process.env.SMTP_PORT || '587'),
-            auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASSWORD,
-            },
-        });
-
-        const mailOptions = {
+        // Enviar correo electrónico
+        await emailTransporter.sendMail({
             from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
             to: 'ideamex.unam@gmail.com',
             subject: `Nueva solicitud de contacto: ${subject}`,
@@ -69,9 +60,7 @@ export const submitContactForm = async (req: Request, res: Response): Promise<vo
                 <p><strong>Mensaje:</strong></p>
                 <p>${message}</p>
             `,
-        };
-
-        await transporter.sendMail(mailOptions);
+        });
 
         sendSuccessResponse(res, 'Contact request submitted successfully', null, 201);
     } catch (error) {
