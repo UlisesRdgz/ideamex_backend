@@ -93,7 +93,6 @@ export const activateUser = async (req: Request, res: Response): Promise<void> =
 
     try {
         const user = await findUserByToken(token);
-        console.log('User found:', user);
 
         if (!user) {
             sendErrorResponse(res, 'Invalid activation token', null, 404);
