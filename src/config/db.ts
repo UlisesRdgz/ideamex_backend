@@ -27,3 +27,18 @@ export const pool = mariadb.createPool({
     connectionLimit: 5,
     supportBigNumbers: true,
 });
+
+/**
+ * Verifica la conexión a la base de datos al iniciar la aplicación.
+ * Si hay un error, detiene la ejecución del servidor.
+ */
+export const checkDatabaseConnection = async () => {
+    try {
+        const conn = await pool.getConnection();
+        console.log('Connected to MariaDB');
+        conn.release();
+    } catch (err) {
+        console.error('Database connection error:', err);
+        process.exit(1);
+    }
+};
