@@ -88,7 +88,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 // Arranque del servidor
-app.listen(appConfig.port, '127.0.0.1', () => {
-  console.log(`[SERVER] Servidor corriendo en http://127.0.0.1:${appConfig.port}${appConfig.basePath}`);
-  console.log(`[DOCS] Swagger disponible en http://127.0.0.1:${appConfig.port}${appConfig.basePath}/docs`);
+app.listen(appConfig.port, '0.0.0.0', () => {
+  console.log(`[SERVER] Servidor corriendo en http://132.248.32.106:${appConfig.port}${appConfig.basePath}`);
+  console.log(`[DOCS] Swagger disponible en http://132.248.32.106:${appConfig.port}${appConfig.basePath}/docs`);
 });
