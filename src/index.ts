@@ -5,117 +5,90 @@
  * @module index
  * @requires express
  * @requires dotenv
- * @requires cors
  * @requires helmet
+ * @requires cors
  * @requires morgan
+ * @requires cookie-parser
  * @requires swagger-jsdoc
  * @requires swagger-ui-express
- * @requires cookie-parser
- * @requires passport
  * @requires express-rate-limit
- * @requires ./routes/auth
- * @requires ./routes/protected
- * @requires ./routes/contactRoutes
- * @requires ./config/db
- * @requires ./config/swagger
- * @requires ./config/passportConfig
- * @requires ./middlewares/swaggerAuthMiddleware
- * @requires ./utils/responseUtils
+ * @requires ./config/*
+ * @requires ./routes/*
+ * @requires ./middlewares/*
+ * @requires ./utils/*
  * 
  * @author Ulises Rodríguez García
  */
 
 import express, { Application, Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
-import cors from 'cors';
 import helmet from 'helmet';
+import cors from 'cors';
 import morgan from 'morgan';
-import swaggerJsdoc from 'swagger-jsdoc';
-import swaggerUi from 'swagger-ui-express';
-import cookieParser from 'cookie-parser';
-
-import authRoutes from './routes/auth';
-import { checkDatabaseConnection, pool } from './config/db';
-import passport from './config/passportConfig';
-import swaggerOptions from './config/swagger';
-import { swaggerAuth } from './middlewares/swaggerAuthMiddleware';
-import protectedRoutes from './routes/protected';
-import { sendErrorResponse } from './utils/responseUtils';
-import contactRoutes from './routes/contactRoutes';
 import rateLimit from 'express-rate-limit';
+import swaggerUi from 'swagger-ui-express';
+import swaggerJsdoc from 'swagger-jsdoc';
 
-// Carga las variables de entorno
+import { appConfig } from './config/appConfig';
+import { checkDatabaseConnection } from './config/db';
+import swaggerOptions from './config/swagger';
+
+import { swaggerAuth } from './middlewares/swaggerAuth.middleware';
+import { sendErrorResponse } from './utils/response';
+
+import authRoutes from './api/auth/auth.routes';
+import contactRoutes from './api/contact/contact.routes';
+import analysisRoutes from './api/analysis/analysis.routes';
+
+// Inicialización
 dotenv.config();
-
-// Configuración de la aplicación
 const app: Application = express();
-const PORT: number = parseInt(process.env.PORT || '3000', 10);
-const BASE_PATH: string = process.env.BASE_PATH || '/api';
 
-// Middlewares globales
+// Middleware base
 app.use(express.json());
-app.use(cookieParser());
 app.use(helmet());
 app.use(cors());
 
-if (process.env.NODE_ENV !== 'production') {
-    app.use(morgan('dev'));
+// Logging solo en desarrollo
+if (appConfig.env !== 'production') {
+  app.use(morgan('dev'));
 }
 
-// Inicializar Passport
-app.use(passport.initialize());
+// Verificaciones iniciales
+checkDatabaseConnection(); // Base de datos
+// Redis se conecta al importar config/redis
 
-// Verifica la conexión a la base de datos
-checkDatabaseConnection();
-
-// Configuración de Swagger
+// Documentación Swagger protegida
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
-app.use(`${BASE_PATH}/docs`, swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use(`${appConfig.basePath}/docs`, swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-/**
- * Middleware de limitación de solicitudes para evitar spam en la ruta de contacto.
- * Limita a 2 solicitudes por IP cada 15 minutos.
- */
+// Rate limit para evitar spam
 const contactLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 2,
-    handler: (req: Request, res: Response) => {
-        sendErrorResponse(res, 'Has alcanzado el límite de solicitudes. Inténtalo de nuevo más tarde.', null, 429);
-    },
+  windowMs: 15 * 60 * 1000,
+  max: 2,
+  handler: (req: Request, res: Response) => {
+    sendErrorResponse(res, 'Has alcanzado el límite de solicitudes. Inténtalo más tarde.', null, 429);
+  },
 });
 
-// Definición de rutas
-app.use(`${BASE_PATH}/auth`, authRoutes);
-app.use(`${BASE_PATH}/contact`, contactLimiter, contactRoutes);
-app.use(`${BASE_PATH}/protected`, protectedRoutes);
+// Rutas principales
+app.use(`${appConfig.basePath}/auth`, authRoutes);
+app.use(`${appConfig.basePath}/contact`, contactLimiter, contactRoutes);
+app.use(`${appConfig.basePath}/analysis`, analysisRoutes);
 
-/**
- * Ruta principal.
- * @name GET /
- * @function
- * @returns {Object} Mensaje de bienvenida.
- */
-app.get(`${BASE_PATH}`, (req: Request, res: Response) => {
-    res.json({ message: `Welcome to the IDEAMEX Backend API!` });
+// Ruta principal
+app.get(appConfig.basePath, (req: Request, res: Response) => {
+  res.json({ message: `Bienvenido a la API de ${appConfig.appName}` });
 });
 
-/**
- * Middleware para manejar errores no controlados.
- * @function
- * @param {Error} err - Error capturado.
- * @param {Request} req - Objeto de solicitud de Express.
- * @param {Response} res - Objeto de respuesta de Express.
- * @param {NextFunction} next - Función para pasar al siguiente middleware.
- * @returns {void}
- */
+// Manejador global de errores
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-    console.error('Unhandled Error:', err);
-    const statusCode = err.statusCode || 500;
-    sendErrorResponse(res, err.message || 'Internal Server Error', err.errors, statusCode);
+  console.error('[ERROR] Unhandled:', err);
+  sendErrorResponse(res, err.message || 'Internal Server Error', err.errors || null, err.statusCode || 500);
 });
 
-// Inicia el servidor
-app.listen(PORT, '127.0.0.1', () => {
-    console.log(`Server running on http://127.0.0.1:${PORT}${BASE_PATH}`);
-    console.log(`Swagger docs available at http://127.0.0.1:${PORT}${BASE_PATH}/docs`);
+// Arranque del servidor
+app.listen(appConfig.port, '127.0.0.1', () => {
+  console.log(`[SERVER] Servidor corriendo en http://127.0.0.1:${appConfig.port}${appConfig.basePath}`);
+  console.log(`[DOCS] Swagger disponible en http://127.0.0.1:${appConfig.port}${appConfig.basePath}/docs`);
 });

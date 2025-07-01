@@ -4,14 +4,13 @@
  * 
  * @module config/swagger
  * @requires swagger-jsdoc
+ * @requires ./appConfig
  * 
  * @author Ulises Rodríguez García
  */
 
 import { Options } from 'swagger-jsdoc';
-
-// Cargar BASE_PATH desde las variables de entorno o usar `/ideamex_backend` por defecto
-const BASE_PATH = process.env.BASE_PATH || '/ideamex_backend';
+import { appConfig } from './appConfig';
 
 /**
  * Configuración para generar la documentación de Swagger.
@@ -22,17 +21,17 @@ const swaggerOptions: Options = {
     definition: {
         openapi: '3.0.0',
         info: {
-            title: 'IDEAMEX API',
-            version: '1.0.0',
+            title: appConfig.appName,
+            version: appConfig.version,
             description: 'API documentation for the IDEAMEX backend',
             contact: {
-                name: 'Ulises Rodriguez García',
-                email: 'ulises.rdgz@ciencias.unam.mx',
+                name: appConfig.contact.name,
+                email: appConfig.contact.email,
             },
         },
         servers: [
             {
-                url: `http://127.0.0.1:3000${BASE_PATH}`,
+                url: `http://127.0.0.1:${appConfig.port}${appConfig.basePath}`,
                 description: 'Local development server',
             },
         ],
@@ -51,8 +50,8 @@ const swaggerOptions: Options = {
             },
         ],
     },
-    // Incluye los archivos de la carpeta `docs` en la generación de documentación
-    apis: ['./src/docs/*.ts'],
+    // Incluye anotaciones de Swagger de todos los módulos
+    apis: ['./src/api/**/*.docs.ts'],
 };
 
 export default swaggerOptions;
