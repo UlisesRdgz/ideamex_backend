@@ -14,7 +14,7 @@
 import { Router } from 'express';
 import { handleProjectUpload } from './analysis.controller';
 import { uploadProject } from '../../config/multer';
-import { requireUser } from '../../middlewares/requireUser.middleware';
+import { requireUser } from '../auth/auth.middleware';
 
 const router = Router();
 

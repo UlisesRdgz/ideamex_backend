@@ -21,33 +21,24 @@ import { sendErrorResponse, sendSuccessResponse } from '../../utils/response';
  * Valida los datos, construye la ruta de almacenamiento y registra el proyecto en la base de datos.
  * 
  * @route POST /analysis/upload
- * @access Público (requiere headers x-user-id, x-username y x-project-name)
+ * @access Privado (requiere autenticación Bearer y campo `projectName` en body)
  */
 export const handleProjectUpload = async (req: Request, res: Response): Promise<void> => {
   try {
     const file = req.file;
-    const { description } = req.body;
+    const { description, projectName } = req.body;
 
-    const userIdHeader = req.headers['x-user-id'];
-    const usernameHeader = req.headers['x-username'];
-    const projectNameHeader = req.headers['x-project-name'];
+    const user = req.user;
 
-    // Validar headers requeridos
-    if (
-      typeof userIdHeader !== 'string' ||
-      typeof usernameHeader !== 'string' ||
-      typeof projectNameHeader !== 'string'
-    ) {
-      sendErrorResponse(res, 'Missing required headers', null, 400);
+    // Validar usuario autenticado
+    if (!user || typeof user.username !== 'string' || typeof user.id_user !== 'number') {
+      sendErrorResponse(res, 'Missing or invalid user information from token', null, 400);
       return;
     }
 
-    const id_user = parseInt(userIdHeader, 10);
-    const username = usernameHeader;
-    const projectName = projectNameHeader;
-
-    if (isNaN(id_user)) {
-      sendErrorResponse(res, 'Invalid user ID format', null, 400);
+    // Validar nombre del proyecto
+    if (!projectName || typeof projectName !== 'string') {
+      sendErrorResponse(res, 'Missing or invalid project name', null, 400);
       return;
     }
 
@@ -58,15 +49,15 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
 
     // Construir la ruta del archivo para la base de datos
     const { relativePath } = buildProjectPath(
-      username,
-      id_user,
+      user.username,
+      user.id_user,
       projectName,
       file.originalname
     );
 
     // Insertar proyecto en la base de datos
     const id_project = await createProject(
-      id_user,
+      user.id_user,
       projectName,
       description || null,
       'active',
