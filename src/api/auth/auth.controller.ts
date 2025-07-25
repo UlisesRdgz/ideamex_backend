@@ -17,6 +17,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import dayjs from 'dayjs';
+import jwt from 'jsonwebtoken';
 
 import { generateToken } from '../../utils/token';
 import {
@@ -103,7 +104,7 @@ export const activateUser = async (req: Request, res: Response): Promise<void> =
 
 /**
  * Inicia sesión para un usuario con autenticación local.
- * Retorna información básica del usuario para que el frontend lo identifique.
+ * Retorna token Bearer y datos mínimos del usuario.
  */
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
@@ -131,7 +132,17 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const token = jwt.sign(
+      {
+        id_user: user.id_user,
+        username: user.username,
+      },
+      process.env.JWT_SECRET || 'defaultsecret',
+      { expiresIn: '30d' }
+    );
+
     sendSuccessResponse(res, 'Login successful', {
+      token,
       id: user.id_user,
       email: user.email,
       username: user.username,

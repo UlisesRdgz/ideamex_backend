@@ -1,6 +1,6 @@
 /**
  * @file Funciones auxiliares para validación y sanitización de archivos.
- * Incluye lógica para extensiones, rutas y nombres seguros.
+ * Incluye lógica para extensiones, rutas y nombres seguros para almacenamiento de proyectos.
  * 
  * @module utils/file
  * 
@@ -28,10 +28,10 @@ export const isValidExtension = (filename: string): boolean => {
 };
 
 /**
- * Sanitiza cualquier nombre (usuario o proyecto) para uso en sistema de archivos.
+ * Sanitiza cualquier nombre (usuario o proyecto) para uso seguro en sistema de archivos.
  * 
  * @param name - Nombre a limpiar.
- * @returns Nombre en formato slug seguro.
+ * @returns Nombre convertido a slug.
  */
 export const sanitizeName = (name: string): string => {
   return slugify(name, {
@@ -42,7 +42,7 @@ export const sanitizeName = (name: string): string => {
 };
 
 /**
- * Asegura que un directorio exista (lo crea si no).
+ * Asegura que el directorio de destino exista.
  * 
  * @param dir - Ruta absoluta del directorio.
  */
@@ -53,13 +53,13 @@ export const ensureDirectory = (dir: string): void => {
 };
 
 /**
- * Devuelve la ruta de almacenamiento para un archivo de proyecto.
+ * Construye una ruta relativa y absoluta para guardar un archivo de proyecto.
  * 
  * @param username - Nombre del usuario (sin sanitizar).
- * @param userId - ID del usuario.
+ * @param userId - ID numérico del usuario.
  * @param projectName - Nombre del proyecto (sin sanitizar).
- * @param filename - Nombre original del archivo.
- * @returns Rutas relativa y absoluta del archivo.
+ * @param filename - Nombre original del archivo subido.
+ * @returns Objeto con ruta relativa y absoluta del archivo.
  */
 export const buildProjectPath = (
   username: string,
@@ -71,8 +71,10 @@ export const buildProjectPath = (
   const safeProject = sanitizeName(projectName);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const safeFilename = `${timestamp}_${filename}`;
+
   const userFolder = `${safeUsername}_${userId}`;
   const relativePath = path.join('projects', userFolder, safeProject, safeFilename);
   const fullPath = path.resolve(relativePath);
+
   return { relativePath, fullPath };
 };

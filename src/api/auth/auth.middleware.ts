@@ -1,9 +1,10 @@
 /**
  * @file Middlewares de autenticación y validación de usuarios.
- * Valida usuarios por encabezados personalizados y previene registros duplicados.
+ * Valida usuarios mediante Bearer Token y previene registros duplicados.
  * 
  * @module api/auth/auth.middleware
  * @requires express
+ * @requires jsonwebtoken
  * @requires ../../services/auth.service
  * @requires ../../utils/response
  * 
@@ -11,45 +12,57 @@
  */
 
 import { Request, Response, NextFunction, RequestHandler } from 'express';
-import { findUserByEmail, findUserById } from './auth.service';
+import jwt, { JwtPayload } from 'jsonwebtoken';
+import { findUserByEmail } from './auth.service';
 import { sendErrorResponse } from '../../utils/response';
 
 /**
- * Middleware para simular autenticación usando encabezados personalizados.
- * El frontend debe enviar `x-user-id` y `x-username` en cada solicitud.
+ * Middleware para validar autenticación mediante Bearer Token.
+ * El token debe ser enviado en el header `Authorization`.
  * 
  * @function requireUser
  * @param req - Objeto de solicitud HTTP.
  * @param res - Objeto de respuesta HTTP.
  * @param next - Función para continuar la ejecución.
  */
-export const requireUser: RequestHandler = async (req, res, next) => {
-  const userIdHeader = req.headers['x-user-id'];
-  const usernameHeader = req.headers['x-username'];
+export const requireUser: RequestHandler = (req, res, next) => {
+  const authHeader = req.header('Authorization');
 
-  const id_user = typeof userIdHeader === 'string' ? parseInt(userIdHeader, 10) : null;
-  const username = typeof usernameHeader === 'string' ? usernameHeader : null;
-
-  if (!id_user || !username) {
-    sendErrorResponse(res, 'Faltan encabezados de usuario', null, 401);
+  if (!authHeader?.startsWith('Bearer ')) {
+    sendErrorResponse(res, 'Token Bearer faltante o mal formado', null, 401);
     return;
   }
 
-  // (Opcional) Verificar existencia del usuario en base de datos
-  const user = await findUserById(id_user);
-  if (!user || user.username !== username) {
-    sendErrorResponse(res, 'Usuario inválido o no encontrado', null, 401);
-    return;
-  }
+  const token = authHeader.split(' ')[1];
 
-  // Agrega el usuario al objeto de solicitud
-  req.user = { id_user, username };
-  next();
+  try {
+    const secret = process.env.JWT_SECRET || 'defaultsecret';
+    const decoded = jwt.verify(token, secret) as JwtPayload;
+
+    if (
+      typeof decoded !== 'object' ||
+      typeof decoded.id_user !== 'number' ||
+      typeof decoded.username !== 'string'
+    ) {
+      sendErrorResponse(res, 'Token inválido', null, 401);
+      return;
+    }
+
+    // Establece el usuario autenticado en la request
+    req.user = {
+      id_user: decoded.id_user,
+      username: decoded.username,
+    };
+
+    next();
+  } catch (error) {
+    console.error('[AUTH] Token inválido o expirado:', error);
+    sendErrorResponse(res, 'Token inválido o expirado', null, 401);
+  }
 };
 
 /**
  * Middleware para prevenir el registro de usuarios con correos duplicados.
- * Verifica si el correo ya está en uso en la base de datos.
  * 
  * @async
  * @function checkEmailExists
@@ -67,12 +80,13 @@ export const checkEmailExists = async (
   try {
     const existingUser = await findUserByEmail(email);
     if (existingUser) {
-      sendErrorResponse(res, 'User already exists', null, 400);
+      sendErrorResponse(res, 'El correo ya está en uso', null, 400);
       return;
     }
+
     next();
   } catch (error) {
-    console.error('Error checking email existence:', error);
-    sendErrorResponse(res, 'Server error while checking email', null, 500);
+    console.error('[AUTH] Error al verificar correo existente:', error);
+    sendErrorResponse(res, 'Error de servidor', null, 500);
   }
 };
