@@ -6,7 +6,7 @@
  * @requires express
  * @requires ../utils/response
  * 
- * @author Ulises Rodríguez
+ * @author Ulises Rodríguez García
  */
 
 import { Request, Response, NextFunction } from 'express';

@@ -8,8 +8,7 @@
  *   name: Analysis
  *   description: Gestión y análisis de proyectos de usuario
  * 
- * @author
- * Ulises Rodríguez García
+ * @author Ulises Rodríguez García
  */
 
 /**
