@@ -42,6 +42,14 @@ export const sanitizeName = (name: string): string => {
 };
 
 /**
+ * Sanitiza correos para usarlos como nombres de carpeta, permitiendo puntos.
+ */
+export const sanitizeEmailPrefix = (email: string): string => {
+  const prefix = email.split('@')[0];
+  return prefix.replace(/[^a-zA-Z0-9._-]/g, '');
+};
+
+/**
  * Asegura que el directorio de destino exista.
  * 
  * @param dir - Ruta absoluta del directorio.

@@ -12,7 +12,7 @@ import { User } from '../models/User';
 declare global {
   namespace Express {
     interface Request {
-      user?: Pick<User, 'id_user' | 'username'>;
+      user?: Pick<User, 'id_user' | 'username' | 'email'>;
     }
   }
 }

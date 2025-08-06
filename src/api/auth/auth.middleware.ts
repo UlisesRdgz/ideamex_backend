@@ -52,6 +52,7 @@ export const requireUser: RequestHandler = (req, res, next) => {
     req.user = {
       id_user: decoded.id_user,
       username: decoded.username,
+      email: decoded.email,
     };
 
     next();

@@ -136,6 +136,7 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
       {
         id_user: user.id_user,
         username: user.username,
+        email: user.email,
       },
       process.env.JWT_SECRET || 'defaultsecret',
       { expiresIn: '30d' }
