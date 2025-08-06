@@ -21,7 +21,7 @@ import { emailTransporter } from '../config/email';
  * @throws Error si ocurre un problema al enviar el correo.
  */
 export const sendActivationEmail = async (email: string, token: string): Promise<void> => {
-  const activationLink = `http://localhost:3000/api/v1/ideamex/auth/activate?token=${token}`;
+  const activationLink = `http://132.248.32.106:3000/api/v1/ideamex/auth/activate?token=${token}`;
 
   await emailTransporter.sendMail({
     from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
