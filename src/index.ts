@@ -56,7 +56,6 @@ if (appConfig.env !== 'production') {
 
 // Verificaciones iniciales
 checkDatabaseConnection(); // Base de datos
-// Redis se conecta al importar config/redis
 
 // Documentación Swagger protegida
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
