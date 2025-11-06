@@ -21,7 +21,7 @@ import { emailTransporter } from '../config/email';
  * @throws Error si ocurre un problema al enviar el correo.
  */
 export const sendActivationEmail = async (email: string, token: string): Promise<void> => {
-  const activationLink = `http://132.248.32.106:3000/api/v1/ideamex/auth/activate?token=${token}`;
+  const activationLink = `http://www.uusmb.unam.mx/ideamex_version2/auth/activate?token=${token}`;
 
   await emailTransporter.sendMail({
     from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
@@ -41,7 +41,7 @@ export const sendActivationEmail = async (email: string, token: string): Promise
  * @throws Error si ocurre un problema al enviar el correo.
  */
 export const sendPasswordResetEmail = async (email: string, token: string): Promise<void> => {
-  const resetLink = `http://localhost:3000/api/v1/ideamex/auth/reset-password?token=${token}`;
+  const resetLink = `http://www.uusmb.unam.mx/ideamex_version2/auth/reset-password?token=${token}`;
 
   await emailTransporter.sendMail({
     from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
