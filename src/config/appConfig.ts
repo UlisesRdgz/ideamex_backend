@@ -14,7 +14,7 @@ dotenv.config();
 
 export const appConfig = {
   // Entorno y puerto
-  env: process.env.NODE_ENV || 'development',
+  env: process.env.NODE_ENV || 'production',
   port: parseInt(process.env.PORT || '5000', 10),
 
   // Express recibirá solo "/", porque nginx elimina el prefijo /ideamex2/api/
