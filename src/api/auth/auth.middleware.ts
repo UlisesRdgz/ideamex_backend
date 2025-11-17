@@ -75,15 +75,12 @@ export const requireUser: RequestHandler = (req, res, next) => {
 /**
  * Middleware para prevenir el registro de correos duplicados.
  */
-export const checkEmailExists = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const checkEmailExists = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const { email } = req.body;
 
   try {
-    const existingUser = await findUserByEmail(email);
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingUser = await findUserByEmail(normalizedEmail);
 
     if (existingUser) {
       return sendErrorResponse(res, 'El correo ya está en uso', null, 400);
