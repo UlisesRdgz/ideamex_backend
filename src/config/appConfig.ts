@@ -14,7 +14,7 @@ dotenv.config();
 
 export const appConfig = {
   // Entorno y puerto
-  env: process.env.NODE_ENV || 'production',
+  env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '5000', 10),
 
   // Ruta base EXACTA del backend detrás de nginx
