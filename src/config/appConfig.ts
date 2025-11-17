@@ -15,7 +15,7 @@ dotenv.config();
 export const appConfig = {
   // Entorno y puerto
   env: process.env.NODE_ENV || 'development',
-  port: parseInt(process.env.PORT || '3000', 10),
+  port: parseInt(process.env.PORT || '5000', 10),
 
   // Ruta base de la API
   basePath: process.env.BASE_PATH || '/api',
