@@ -58,7 +58,7 @@ export const createUser = async (
   try {
     const normalizedEmail = normalizeEmail(user.email);
 
-    const result: any = await conn.query(query, [
+    const [result]: any = await conn.query(query, [
       normalizedEmail,
       user.username,
       user.password,
@@ -70,20 +70,17 @@ export const createUser = async (
       user.auth_provider,
     ]);
 
-    const insert = result[0];
-
-    if (!insert?.insertId) {
-      throw new Error('User creation failed');
-    }
+    if (!result.insertId) throw new Error("User creation failed");
 
     return {
-      id_user: insert.insertId,
+      id_user: result.insertId,
       created_at: new Date(),
       updated_at: new Date(),
       last_session: null,
       ...user,
       email: normalizedEmail,
     };
+
   } finally {
     conn.release();
   }
