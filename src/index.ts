@@ -1,23 +1,11 @@
 /**
  * @file Archivo principal de la aplicación.
- * Configura el servidor Express, la conexión a la base de datos, las rutas principales y la documentación Swagger protegida.
+ * Configura el servidor Express, la conexión a la base de datos,
+ * las rutas principales y la documentación Swagger protegida.
  * 
  * @module index
  * @requires express
  * @requires dotenv
- * @requires helmet
- * @requires cors
- * @requires morgan
- * @requires cookie-parser
- * @requires swagger-jsdoc
- * @requires swagger-ui-express
- * @requires express-rate-limit
- * @requires ./config/*
- * @requires ./routes/*
- * @requires ./middlewares/*
- * @requires ./utils/*
- * 
- * @author Ulises Rodríguez García
  */
 
 import express, { Application, Request, Response, NextFunction } from 'express';
@@ -54,19 +42,29 @@ if (appConfig.env !== 'production') {
   app.use(morgan('dev'));
 }
 
-// Verificaciones iniciales
-checkDatabaseConnection(); // Base de datos
+// Verificación de conexión a la base de datos
+checkDatabaseConnection();
 
-// Documentación Swagger protegida
+// Swagger (documentación protegida)
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
-app.use(`${appConfig.basePath}/docs`, swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use(
+  `${appConfig.basePath}/docs`,
+  swaggerAuth,
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec)
+);
 
 // Rate limit para evitar spam
 const contactLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 2,
   handler: (req: Request, res: Response) => {
-    sendErrorResponse(res, 'Has alcanzado el límite de solicitudes. Inténtalo más tarde.', null, 429);
+    sendErrorResponse(
+      res,
+      'Has alcanzado el límite de solicitudes. Inténtalo más tarde.',
+      null,
+      429
+    );
   },
 });
 
@@ -75,7 +73,7 @@ app.use(`${appConfig.basePath}/auth`, authRoutes);
 app.use(`${appConfig.basePath}/contact`, contactLimiter, contactRoutes);
 app.use(`${appConfig.basePath}/analysis`, analysisRoutes);
 
-// Ruta principal
+// Ruta raíz
 app.get(appConfig.basePath, (req: Request, res: Response) => {
   res.json({ message: `Bienvenido a la API de ${appConfig.appName}` });
 });
@@ -83,11 +81,23 @@ app.get(appConfig.basePath, (req: Request, res: Response) => {
 // Manejador global de errores
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('[ERROR] Unhandled:', err);
-  sendErrorResponse(res, err.message || 'Internal Server Error', err.errors || null, err.statusCode || 500);
+  sendErrorResponse(
+    res,
+    err.message || 'Internal Server Error',
+    err.errors || null,
+    err.statusCode || 500
+  );
 });
 
 // Arranque del servidor
 app.listen(appConfig.port, '0.0.0.0', () => {
-  console.log(`[SERVER] Servidor corriendo en http://132.248.32.106:${appConfig.port}${appConfig.basePath}`);
-  console.log(`[DOCS] Swagger disponible en http://132.248.32.106:${appConfig.port}${appConfig.basePath}/docs`);
+  console.log(
+    `[SERVER] API interna escuchando en http://0.0.0.0:${appConfig.port}${appConfig.basePath}`
+  );
+  console.log(
+    `[NGINX] API pública disponible en https://iauusmb.ibt.unam.mx${appConfig.basePath}`
+  );
+  console.log(
+    `[DOCS] Swagger público disponible en https://iauusmb.ibt.unam.mx${appConfig.basePath}/docs`
+  );
 });
