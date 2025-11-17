@@ -33,7 +33,7 @@ export const submitContactForm = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const contactData: Omit<ContactRequest, 'id' | 'created_at'> = {
+    const contactData: Omit<ContactRequest, 'id_contact_request' | 'created_at'> = {
       full_name: fullName,
       email,
       phone,

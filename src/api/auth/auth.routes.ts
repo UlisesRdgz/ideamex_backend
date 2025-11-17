@@ -3,12 +3,6 @@
  * Define los endpoints públicos para registro, login, activación y recuperación de contraseña.
  * 
  * @module api/auth/auth.routes
- * @requires express
- * @requires ./auth.controller
- * @requires ./auth.middleware
- * @requires ../../middlewares/validation.middleware
- * 
- * @author Ulises Rodríguez García
  */
 
 import { Router } from 'express';
@@ -26,34 +20,32 @@ import {
   validatePasswordResetRequest,
   validatePasswordReset,
 } from '../../middlewares/validation.middleware';
-import {
-  checkEmailExists,
-} from './auth.middleware';
+import { checkEmailExists } from './auth.middleware';
 
 const router = Router();
 
 /**
- * @route POST /api/v1/ideamex/auth/register
+ * @route POST /auth/register
  * @desc Registra un nuevo usuario local
  * @access Público
  */
 router.post(
   '/register',
-  checkEmailExists,
   validateRegistration,
   validateRequest,
+  checkEmailExists,
   registerUser
 );
 
 /**
- * @route GET /api/v1/ideamex/auth/activate
+ * @route GET /auth/activate
  * @desc Activa una cuenta mediante token
  * @access Público
  */
 router.get('/activate', activateUser);
 
 /**
- * @route POST /api/v1/ideamex/auth/login
+ * @route POST /auth/login
  * @desc Inicia sesión para usuarios locales
  * @access Público
  */
@@ -65,7 +57,7 @@ router.post(
 );
 
 /**
- * @route POST /api/v1/ideamex/auth/request-password-reset
+ * @route POST /auth/request-password-reset
  * @desc Solicita restablecimiento de contraseña por correo
  * @access Público
  */
@@ -77,7 +69,7 @@ router.post(
 );
 
 /**
- * @route POST /api/v1/ideamex/auth/reset-password
+ * @route POST /auth/reset-password
  * @desc Establece nueva contraseña con token válido
  * @access Público
  */

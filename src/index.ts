@@ -8,8 +8,10 @@
  * @requires dotenv
  */
 
-import express, { Application, Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
+dotenv.config(); // ✔ Cargar .env ANTES de cualquier otro import que lea variables
+
+import express, { Application, Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -28,13 +30,20 @@ import authRoutes from './api/auth/auth.routes';
 import contactRoutes from './api/contact/contact.routes';
 import analysisRoutes from './api/analysis/analysis.routes';
 
-// Inicialización
-dotenv.config();
+// Inicialización del servidor
 const app: Application = express();
 
-// Middleware base
+// Middlewares globales
 app.use(express.json());
-app.use(helmet());
+
+// Helmet con configuración recomendada para evitar bloqueos CORP
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+  })
+);
+
+// CORS abierto, lo puedes personalizar más adelante
 app.use(cors());
 
 // Logging solo en desarrollo
@@ -45,19 +54,21 @@ if (appConfig.env !== 'production') {
 // Verificación de conexión a la base de datos
 checkDatabaseConnection();
 
-// Swagger (documentación protegida)
+// Configuración de Swagger (documentación protegida con auth)
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 app.use(
-  `${appConfig.basePath}/docs`,
+  `${appConfig.basePath}docs`,
   swaggerAuth,
   swaggerUi.serve,
   swaggerUi.setup(swaggerSpec)
 );
 
-// Rate limit para evitar spam
+// Rate limit para evitar spam en el formulario de contacto
 const contactLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 2,
+  standardHeaders: true,
+  legacyHeaders: false,
   handler: (req: Request, res: Response) => {
     sendErrorResponse(
       res,
@@ -69,11 +80,11 @@ const contactLimiter = rateLimit({
 });
 
 // Rutas principales
-app.use(`${appConfig.basePath}/auth`, authRoutes);
-app.use(`${appConfig.basePath}/contact`, contactLimiter, contactRoutes);
-app.use(`${appConfig.basePath}/analysis`, analysisRoutes);
+app.use(`${appConfig.basePath}auth`, authRoutes);
+app.use(`${appConfig.basePath}contact`, contactLimiter, contactRoutes);
+app.use(`${appConfig.basePath}analysis`, analysisRoutes);
 
-// Ruta raíz
+// Ruta base
 app.get(appConfig.basePath, (req: Request, res: Response) => {
   res.json({ message: `Bienvenido a la API de ${appConfig.appName}` });
 });
@@ -81,6 +92,7 @@ app.get(appConfig.basePath, (req: Request, res: Response) => {
 // Manejador global de errores
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('[ERROR] Unhandled:', err);
+
   sendErrorResponse(
     res,
     err.message || 'Internal Server Error',
@@ -89,15 +101,18 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   );
 });
 
-// Arranque del servidor
+// Inicio del servidor
 app.listen(appConfig.port, '0.0.0.0', () => {
   console.log(
     `[SERVER] API interna escuchando en http://0.0.0.0:${appConfig.port}${appConfig.basePath}`
   );
+
+  // Ruta pública real (con prefijo que NGINX expone)
   console.log(
-    `[NGINX] API pública disponible en https://iauusmb.ibt.unam.mx${appConfig.basePath}`
+    `[NGINX] API pública disponible en https://iauusmb.ibt.unam.mx/ideamex2/api/`
   );
+
   console.log(
-    `[DOCS] Swagger público disponible en https://iauusmb.ibt.unam.mx${appConfig.basePath}/docs`
+    `[DOCS] Swagger público disponible en https://iauusmb.ibt.unam.mx/ideamex2/api/docs`
   );
 });

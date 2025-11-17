@@ -8,7 +8,7 @@
  *   name: Auth
  *   description: Endpoints relacionados con la autenticación de usuarios.
  * 
- * @author Ulises Rodríguez García
+ * @auth Ulises Rodríguez García
  */
 
 /**
@@ -32,6 +32,7 @@
  *           type: string
  *         confirmPassword:
  *           type: string
+ *
  *     LoginInput:
  *       type: object
  *       required:
@@ -42,6 +43,7 @@
  *           type: string
  *         password:
  *           type: string
+ *
  *     PasswordResetRequest:
  *       type: object
  *       required:
@@ -49,6 +51,7 @@
  *       properties:
  *         email:
  *           type: string
+ *
  *     PasswordReset:
  *       type: object
  *       required:
@@ -128,17 +131,6 @@
 
 /**
  * @swagger
- * /auth/logout:
- *   post:
- *     tags: [Auth]
- *     summary: Cierra la sesión del usuario
- *     responses:
- *       200:
- *         description: Logout exitoso.
- */
-
-/**
- * @swagger
  * /auth/request-password-reset:
  *   post:
  *     tags: [Auth]
@@ -177,10 +169,21 @@
 
 /**
  * @swagger
+ * /auth/logout:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Cierra la sesión del usuario (solo si implementas refresh tokens)
+ *     responses:
+ *       200:
+ *         description: Logout exitoso.
+ */
+
+/**
+ * @swagger
  * /auth/refresh:
  *   post:
  *     tags: [Auth]
- *     summary: Refresca el token de acceso
+ *     summary: Refresca el token de acceso (pendiente de implementación)
  *     responses:
  *       200:
  *         description: Nuevo token de acceso generado.
