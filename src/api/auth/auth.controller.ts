@@ -24,7 +24,6 @@ import {
   sendActivationEmail,
   sendPasswordResetEmail,
 } from '../../utils/email';
-
 import {
   createUser,
   findUserByToken,
@@ -34,41 +33,18 @@ import {
   findUserByResetToken,
   updateUserPassword,
 } from './auth.service';
-
 import { sendErrorResponse, sendSuccessResponse } from '../../utils/response';
-
-/**
- * Obtiene la variable JWT_SECRET.
- * Si no existe, usa un valor temporal pero alerta en consola.
- */
-const getJwtSecret = (): string => {
-  const secret = process.env.JWT_SECRET;
-
-  if (!secret) {
-    console.warn(
-      '[AUTH WARNING] JWT_SECRET no está definido. Usando "defaultsecret" solo para desarrollo.'
-    );
-    return 'defaultsecret';
-  }
-
-  return secret;
-};
 
 /**
  * Registra un nuevo usuario en el sistema.
  */
 export const registerUser = async (req: Request, res: Response): Promise<void> => {
-  const { email, username, password, confirmPassword } = req.body;
-
-  // Validación de contraseñas
-  if (password !== confirmPassword) {
-    return sendErrorResponse(res, 'Las contraseñas no coinciden', null, 400);
-  }
+  const { email, username, password } = req.body;
 
   try {
     const hashedPassword = await bcrypt.hash(password, 12);
     const activationToken = generateToken();
-    const tokenExpiration = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const tokenExpiration = dayjs().add(24, 'hour').toDate();
 
     const newUser = await createUser({
       email,
@@ -84,7 +60,7 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
 
     await sendActivationEmail(email, activationToken);
 
-    return sendSuccessResponse(
+    sendSuccessResponse(
       res,
       'User registered successfully. Please check your email to activate your account.',
       {
@@ -94,8 +70,8 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
       201
     );
   } catch (error) {
-    console.error('[AUTH] registerUser error:', error);
-    return sendErrorResponse(res, 'Server error', null, 500);
+    console.error('Error in registerUser:', error);
+    sendErrorResponse(res, 'Server error', null, 500);
   }
 };
 
@@ -106,21 +82,23 @@ export const activateUser = async (req: Request, res: Response): Promise<void> =
   const { token } = req.query;
 
   if (!token || typeof token !== 'string') {
-    return sendErrorResponse(res, 'Invalid or missing token', null, 400);
+    sendErrorResponse(res, 'Invalid or missing token', null, 400);
+    return;
   }
 
   try {
     const user = await findUserByToken(token);
 
     if (!user) {
-      return sendErrorResponse(res, 'Invalid activation token', null, 404);
+      sendErrorResponse(res, 'Invalid activation token', null, 404);
+      return;
     }
 
     await activateUserAccount(user.id_user);
-    return sendSuccessResponse(res, 'Account activated successfully');
+    sendSuccessResponse(res, 'Account activated successfully');
   } catch (error) {
     console.error('Error activating user:', error);
-    return sendErrorResponse(res, 'Server error', null, 500);
+    sendErrorResponse(res, 'Server error', null, 500);
   }
 };
 
@@ -133,54 +111,38 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
 
   try {
     const user = await findUserByEmail(email);
-
-    if (!user) {
-      return sendErrorResponse(res, 'Invalid email or password', null, 401);
+    if (!user || !user.password) {
+      sendErrorResponse(res, 'Invalid email or password', null, 401);
+      return;
     }
 
-    // Usuario Google
-    if (user.auth_provider === 'google') {
-      return sendErrorResponse(
-        res,
-        'This account uses Google login. Use the Google login button.',
-        null,
-        403
-      );
-    }
-
-    // No activado
     if (user.activation !== 1) {
-      return sendErrorResponse(
-        res,
-        'Account not activated. Please check your email.',
-        null,
-        403
-      );
+      sendErrorResponse(res, 'Account not activated. Please activate your account.', null, 403);
+      return;
     }
 
-    // Contraseña ausente
-    if (!user.password) {
-      return sendErrorResponse(res, 'Invalid email or password', null, 401);
+    if (user.auth_provider === 'google') {
+      sendErrorResponse(res, 'Please use Google login for this account.', null, 403);
+      return;
     }
 
-    // Validación de contraseña
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      return sendErrorResponse(res, 'Invalid email or password', null, 401);
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      sendErrorResponse(res, 'Invalid email or password', null, 401);
+      return;
     }
 
-    // Generación de token
     const token = jwt.sign(
       {
         id_user: user.id_user,
         username: user.username,
         email: user.email,
       },
-      getJwtSecret(),
+      process.env.JWT_SECRET || 'defaultsecret',
       { expiresIn: '30d' }
     );
 
-    return sendSuccessResponse(res, 'Login successful', {
+    sendSuccessResponse(res, 'Login successful', {
       token,
       id: user.id_user,
       email: user.email,
@@ -188,7 +150,7 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    return sendErrorResponse(res, 'Server error', null, 500);
+    sendErrorResponse(res, 'Server error', null, 500);
   }
 };
 
@@ -200,34 +162,31 @@ export const requestPasswordReset = async (req: Request, res: Response): Promise
 
   try {
     const user = await findUserByEmail(email);
-
     if (!user) {
-      return sendErrorResponse(res, 'Email not found', null, 404);
+      sendErrorResponse(res, 'Email not found', null, 404);
+      return;
     }
 
     if (user.activation !== 1) {
-      return sendErrorResponse(res, 'Account not activated.', null, 403);
+      sendErrorResponse(res, 'Account not activated.', null, 403);
+      return;
     }
 
     if (user.auth_provider === 'google') {
-      return sendErrorResponse(
-        res,
-        'Use Google login to access this account.',
-        null,
-        403
-      );
+      sendErrorResponse(res, 'Use Google login to access this account.', null, 403);
+      return;
     }
 
     const resetToken = generateToken();
-    const expiration = new Date(Date.now() + 60 * 60 * 1000); // 1h
+    const expiration = new Date(Date.now() + 60 * 60 * 1000);
 
     await updateUserResetToken(user.id_user, resetToken, expiration);
     await sendPasswordResetEmail(email, resetToken);
 
-    return sendSuccessResponse(res, 'Password reset email sent');
+    sendSuccessResponse(res, 'Password reset email sent');
   } catch (error) {
     console.error('Password reset request error:', error);
-    return sendErrorResponse(res, 'Server error', null, 500);
+    sendErrorResponse(res, 'Server error', null, 500);
   }
 };
 
@@ -238,22 +197,23 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
   const { token, password, confirmPassword } = req.body;
 
   if (password !== confirmPassword) {
-    return sendErrorResponse(res, 'Passwords do not match', null, 400);
+    sendErrorResponse(res, 'Passwords do not match', null, 400);
+    return;
   }
 
   try {
     const user = await findUserByResetToken(token);
-
     if (!user || !user.token_expiration || user.token_expiration < new Date()) {
-      return sendErrorResponse(res, 'Invalid or expired token', null, 400);
+      sendErrorResponse(res, 'Invalid or expired token', null, 400);
+      return;
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
     await updateUserPassword(user.id_user, hashedPassword);
 
-    return sendSuccessResponse(res, 'Password updated successfully');
+    sendSuccessResponse(res, 'Password updated successfully');
   } catch (error) {
     console.error('Password reset error:', error);
-    return sendErrorResponse(res, 'Server error', null, 500);
+    sendErrorResponse(res, 'Server error', null, 500);
   }
 };
