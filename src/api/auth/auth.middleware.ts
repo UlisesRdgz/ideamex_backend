@@ -1,5 +1,14 @@
 /**
  * @file Middlewares de autenticación y validación de usuarios.
+ * Valida usuarios mediante Bearer Token y previene registros duplicados.
+ * 
+ * @module api/auth/auth.middleware
+ * @requires express
+ * @requires jsonwebtoken
+ * @requires ../../services/auth.service
+ * @requires ../../utils/response
+ * 
+ * @author Ulises Rodríguez García
  */
 
 import { Request, Response, NextFunction, RequestHandler } from 'express';
@@ -8,87 +17,77 @@ import { findUserByEmail } from './auth.service';
 import { sendErrorResponse } from '../../utils/response';
 
 /**
- * Obtiene la variable JWT_SECRET de forma segura.
- */
-const getJwtSecret = (): string => {
-  const secret = process.env.JWT_SECRET;
-
-  if (!secret) {
-    console.warn(
-      '[AUTH WARNING] JWT_SECRET no definido. Usando "defaultsecret" solo para desarrollo.'
-    );
-    return 'defaultsecret';
-  }
-
-  return secret;
-};
-
-/**
- * Valida la estructura del payload del JWT.
- */
-const isValidJwtPayload = (decoded: any): decoded is JwtPayload & {
-  id_user: number;
-  username: string;
-  email: string;
-} => {
-  return (
-    decoded &&
-    typeof decoded === 'object' &&
-    typeof decoded.id_user === 'number' &&
-    typeof decoded.username === 'string' &&
-    typeof decoded.email === 'string'
-  );
-};
-
-/**
- * Middleware: valida el token Bearer y adjunta req.user.
+ * Middleware para validar autenticación mediante Bearer Token.
+ * El token debe ser enviado en el header `Authorization`.
+ * 
+ * @function requireUser
+ * @param req - Objeto de solicitud HTTP.
+ * @param res - Objeto de respuesta HTTP.
+ * @param next - Función para continuar la ejecución.
  */
 export const requireUser: RequestHandler = (req, res, next) => {
   const authHeader = req.header('Authorization');
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return sendErrorResponse(res, 'Token Bearer faltante o mal formado', null, 401);
+  if (!authHeader?.startsWith('Bearer ')) {
+    sendErrorResponse(res, 'Token Bearer faltante o mal formado', null, 401);
+    return;
   }
 
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, getJwtSecret());
+    const secret = process.env.JWT_SECRET || 'defaultsecret';
+    const decoded = jwt.verify(token, secret) as JwtPayload;
 
-    if (!isValidJwtPayload(decoded)) {
-      return sendErrorResponse(res, 'Token inválido', null, 401);
+    if (
+      typeof decoded !== 'object' ||
+      typeof decoded.id_user !== 'number' ||
+      typeof decoded.username !== 'string'
+    ) {
+      sendErrorResponse(res, 'Token inválido', null, 401);
+      return;
     }
 
+    // Establece el usuario autenticado en la request
     req.user = {
       id_user: decoded.id_user,
       username: decoded.username,
       email: decoded.email,
     };
 
-    return next();
+    next();
   } catch (error) {
     console.error('[AUTH] Token inválido o expirado:', error);
-    return sendErrorResponse(res, 'Token inválido o expirado', null, 401);
+    sendErrorResponse(res, 'Token inválido o expirado', null, 401);
   }
 };
 
 /**
- * Middleware para prevenir el registro de correos duplicados.
+ * Middleware para prevenir el registro de usuarios con correos duplicados.
+ * 
+ * @async
+ * @function checkEmailExists
+ * @param req - Objeto de solicitud HTTP.
+ * @param res - Objeto de respuesta HTTP.
+ * @param next - Función para continuar la ejecución.
  */
-export const checkEmailExists = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const checkEmailExists = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
   const { email } = req.body;
 
   try {
-    const normalizedEmail = email.trim().toLowerCase();
-    const existingUser = await findUserByEmail(normalizedEmail);
-
+    const existingUser = await findUserByEmail(email);
     if (existingUser) {
-      return sendErrorResponse(res, 'El correo ya está en uso', null, 400);
+      sendErrorResponse(res, 'El correo ya está en uso', null, 400);
+      return;
     }
 
-    return next();
+    next();
   } catch (error) {
     console.error('[AUTH] Error al verificar correo existente:', error);
-    return sendErrorResponse(res, 'Server error', null, 500);
+    sendErrorResponse(res, 'Error de servidor', null, 500);
   }
 };
