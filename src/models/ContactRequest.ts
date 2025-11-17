@@ -11,7 +11,7 @@ export interface ContactRequest {
   /**
    * Identificador único de la solicitud.
    */
-  id: number;
+  id_contact_request: number;
 
   /**
    * Nombre completo de quien envía la solicitud.

@@ -23,7 +23,7 @@ import { ContactRequest } from '../../models/ContactRequest';
  * @param request - Objeto de solicitud de contacto (sin id ni fecha).
  */
 export const saveContactRequest = async (
-  request: Omit<ContactRequest, 'id' | 'created_at'>
+  request: Omit<ContactRequest, 'id_contact_request' | 'created_at'>
 ): Promise<void> => {
   const conn = await pool.getConnection();
   const query = `
@@ -48,7 +48,7 @@ export const saveContactRequest = async (
  * @param request - Objeto de solicitud de contacto (sin id ni fecha).
  */
 export const notifyAdminByEmail = async (
-  request: Omit<ContactRequest, 'id' | 'created_at'>
+  request: Omit<ContactRequest, 'id_contact_request' | 'created_at'>
 ): Promise<void> => {
   await emailTransporter.sendMail({
     from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,

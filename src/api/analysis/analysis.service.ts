@@ -30,7 +30,7 @@ export const createProject = async (
   path: string
 ): Promise<number> => {
   const query = `
-    INSERT INTO projects (id_user, name, description, status, path)
+    INSERT INTO projects (user_id, name, description, status, path)
     VALUES (?, ?, ?, ?, ?)
   `;
 
@@ -62,7 +62,7 @@ export const projectExists = async (
   const conn = await pool.getConnection();
   try {
     const [row]: any = await conn.query(
-      'SELECT 1 FROM projects WHERE id_user = ? AND name = ? LIMIT 1',
+      'SELECT 1 FROM projects WHERE user_id = ? AND name = ? LIMIT 1',
       [id_user, name]
     );
     return !!row;
@@ -83,7 +83,7 @@ export const getProjectsByUser = async (id_user: number): Promise<any[]> => {
   const query = `
     SELECT id_project, name, description, status, path, created_at
     FROM projects
-    WHERE id_user = ?
+    WHERE user_id = ?
     ORDER BY created_at DESC
   `;
 
@@ -111,7 +111,7 @@ export const deleteProjectById = async (
   const conn = await pool.getConnection();
   try {
     const result = await conn.query(
-      `DELETE FROM projects WHERE id_project = ? AND id_user = ?`,
+      `DELETE FROM projects WHERE id_project = ? AND user_id = ?`,
       [id_project, id_user]
     );
 
@@ -139,7 +139,7 @@ export const getProjectPathById = async (
   const conn = await pool.getConnection();
   try {
     const rows = await conn.query(
-      `SELECT path FROM projects WHERE id_project = ? AND id_user = ?`,
+      `SELECT path FROM projects WHERE id_project = ? AND user_id = ?`,
       [id_project, id_user]
     );
     return rows[0]?.path || null;

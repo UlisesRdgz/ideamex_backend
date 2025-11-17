@@ -13,6 +13,34 @@ import { pool } from '../../config/db';
 import { User } from '../../models/User';
 
 /**
+ * Normaliza correos electrónicos para evitar duplicados.
+ * - Elimina espacios
+ * - Convierte a minúsculas
+ */
+const normalizeEmail = (email: string): string => {
+  return email.trim().toLowerCase();
+};
+
+/**
+ * Convierte un registro de la BD en un objeto User tipado.
+ */
+const mapUser = (row: any): User => ({
+  id_user: row.id_user,
+  email: row.email,
+  username: row.username,
+  password: row.password,
+  activation: row.activation,
+  token: row.token,
+  token_expiration: row.token_expiration,
+  password_request: row.password_request,
+  google_id: row.google_id,
+  auth_provider: row.auth_provider,
+  last_session: row.last_session,
+  created_at: row.created_at,
+  updated_at: row.updated_at,
+});
+
+/**
  * Crea un nuevo usuario en la base de datos.
  * 
  * @async
@@ -27,27 +55,36 @@ export const createUser = async (
     INSERT INTO users (email, username, password, activation, token, token_expiration, password_request, google_id, auth_provider)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
-  const conn = await pool.getConnection();
-  const result = await conn.query(query, [
-    user.email,
-    user.username,
-    user.password,
-    user.activation,
-    user.token,
-    user.token_expiration,
-    user.password_request,
-    user.google_id,
-    user.auth_provider,
-  ]);
-  conn.release();
 
-  return {
-    id_user: result.insertId,
-    created_at: new Date(),
-    updated_at: new Date(),
-    last_session: null,
-    ...user,
-  };
+  const conn = await pool.getConnection();
+  try {
+    const normalizedEmail = normalizeEmail(user.email);
+
+    const [result]: any = await conn.query(query, [
+      normalizedEmail,
+      user.username,
+      user.password,
+      user.activation,
+      user.token,
+      user.token_expiration,
+      user.password_request,
+      user.google_id,
+      user.auth_provider,
+    ]);
+
+    if (!result.insertId) throw new Error('User creation failed');
+
+    return {
+      id_user: result.insertId,
+      created_at: new Date(),
+      updated_at: new Date(),
+      last_session: null,
+      ...user,
+      email: normalizedEmail,
+    };
+  } finally {
+    conn.release();
+  }
 };
 
 /**
@@ -59,10 +96,14 @@ export const createUser = async (
  * @returns Usuario encontrado o null.
  */
 export const findUserByEmail = async (email: string): Promise<User | null> => {
+  const normalizedEmail = normalizeEmail(email);
   const conn = await pool.getConnection();
-  const rows = await conn.query('SELECT * FROM users WHERE email = ?', [email]);
-  conn.release();
-  return rows[0] || null;
+  try {
+    const [rows]: any = await conn.query('SELECT * FROM users WHERE email = ?', [normalizedEmail]);
+    return rows[0] ? mapUser(rows[0]) : null;
+  } finally {
+    conn.release();
+  }
 };
 
 /**
@@ -73,8 +114,14 @@ export const findUserByEmail = async (email: string): Promise<User | null> => {
  */
 export const findUserByToken = async (token: string): Promise<User | null> => {
   const query = `SELECT * FROM users WHERE token = ? AND token_expiration > NOW()`;
-  const [row]: any = await pool.query(query, [token]);
-  return row || null;
+
+  const conn = await pool.getConnection();
+  try {
+    const [rows]: any = await conn.query(query, [token]);
+    return rows[0] ? mapUser(rows[0]) : null;
+  } finally {
+    conn.release();
+  }
 };
 
 /**
@@ -92,7 +139,13 @@ export const activateUserAccount = async (id_user: number): Promise<void> => {
         token_expiration = NULL
     WHERE id_user = ?
   `;
-  await pool.query(query, [id_user]);
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.query(query, [id_user]);
+  } finally {
+    conn.release();
+  }
 };
 
 /**
@@ -110,7 +163,13 @@ export const updateUserResetToken = async (
   tokenExpiration: Date
 ): Promise<void> => {
   const query = `UPDATE users SET token = ?, token_expiration = ? WHERE id_user = ?`;
-  await pool.query(query, [token, tokenExpiration, userId]);
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.query(query, [token, tokenExpiration, userId]);
+  } finally {
+    conn.release();
+  }
 };
 
 /**
@@ -123,8 +182,14 @@ export const updateUserResetToken = async (
  */
 export const findUserByResetToken = async (token: string): Promise<User | null> => {
   const query = `SELECT * FROM users WHERE token = ? AND token_expiration > NOW()`;
-  const [row]: any = await pool.query(query, [token]);
-  return row || null;
+
+  const conn = await pool.getConnection();
+  try {
+    const [rows]: any = await conn.query(query, [token]);
+    return rows[0] ? mapUser(rows[0]) : null;
+  } finally {
+    conn.release();
+  }
 };
 
 /**
@@ -144,7 +209,13 @@ export const updateUserPassword = async (
     SET password = ?, token = NULL, token_expiration = NULL 
     WHERE id_user = ?
   `;
-  await pool.query(query, [hashedPassword, userId]);
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.query(query, [hashedPassword, userId]);
+  } finally {
+    conn.release();
+  }
 };
 
 /**
@@ -161,42 +232,54 @@ export const findOrCreateUser = async (params: {
   googleId: string;
 }): Promise<User> => {
   const conn = await pool.getConnection();
+  const normalizedEmail = normalizeEmail(params.email);
 
-  // Buscar usuario existente
-  const [existing]: any = await conn.query(
-    'SELECT * FROM users WHERE email = ? OR google_id = ?',
-    [params.email, params.googleId]
-  );
+  try {
+    // Buscar usuario existente con lógica segura
+    const [rows]: any = await conn.query(
+      `
+      SELECT * FROM users 
+      WHERE email = ? 
+         OR (google_id IS NOT NULL AND google_id = ?)
+      `,
+      [normalizedEmail, params.googleId]
+    );
 
-  if (existing) {
+    if (rows.length > 0) {
+      return mapUser(rows[0]);
+    }
+
+    // Crear usuario nuevo mediante Google
+    const [result]: any = await conn.query(
+      `
+      INSERT INTO users (
+        email, username, password, activation, auth_provider,
+        google_id, password_request
+      ) VALUES (?, ?, NULL, 1, 'google', ?, 0)
+      `,
+      [normalizedEmail, params.username, params.googleId]
+    );
+
+    if (!result.insertId) throw new Error('Failed to create Google auth user');
+
+    return {
+      id_user: result.insertId,
+      email: normalizedEmail,
+      username: params.username,
+      password: null,
+      activation: 1,
+      token: null,
+      token_expiration: null,
+      password_request: 0,
+      google_id: params.googleId,
+      auth_provider: 'google',
+      created_at: new Date(),
+      updated_at: new Date(),
+      last_session: null,
+    };
+  } finally {
     conn.release();
-    return existing;
   }
-
-  // Crear usuario nuevo
-  const result = await conn.query(
-    `INSERT INTO users (email, username, password, activation, auth_provider, google_id, password_request)
-     VALUES (?, ?, NULL, 1, 'google', ?, 0)`,
-    [params.email, params.username, params.googleId]
-  );
-
-  conn.release();
-
-  return {
-    id_user: result.insertId,
-    email: params.email,
-    username: params.username,
-    password: null,
-    activation: 1,
-    token: null,
-    password_request: 0,
-    last_session: null,
-    created_at: new Date(),
-    updated_at: new Date(),
-    google_id: params.googleId,
-    token_expiration: null,
-    auth_provider: 'google',
-  };
 };
 
 /**
@@ -209,7 +292,10 @@ export const findOrCreateUser = async (params: {
  */
 export const findUserById = async (id_user: number): Promise<User | null> => {
   const conn = await pool.getConnection();
-  const rows = await conn.query('SELECT * FROM users WHERE id_user = ?', [id_user]);
-  conn.release();
-  return rows[0] || null;
+  try {
+    const [rows]: any = await conn.query('SELECT * FROM users WHERE id_user = ?', [id_user]);
+    return rows[0] ? mapUser(rows[0]) : null;
+  } finally {
+    conn.release();
+  }
 };
