@@ -14,8 +14,6 @@ import { User } from '../../models/User';
 
 /**
  * Normaliza correos electrónicos para evitar duplicados.
- * - Elimina espacios
- * - Convierte a minúsculas
  */
 const normalizeEmail = (email: string): string => {
   return email.trim().toLowerCase();
@@ -60,7 +58,7 @@ export const createUser = async (
   try {
     const normalizedEmail = normalizeEmail(user.email);
 
-    const [result]: any = await conn.query(query, [
+    const result: any = await conn.query(query, [
       normalizedEmail,
       user.username,
       user.password,
@@ -72,10 +70,14 @@ export const createUser = async (
       user.auth_provider,
     ]);
 
-    if (!result.insertId) throw new Error('User creation failed');
+    const insert = result[0];
+
+    if (!insert?.insertId) {
+      throw new Error('User creation failed');
+    }
 
     return {
-      id_user: result.insertId,
+      id_user: insert.insertId,
       created_at: new Date(),
       updated_at: new Date(),
       last_session: null,
@@ -97,10 +99,17 @@ export const createUser = async (
  */
 export const findUserByEmail = async (email: string): Promise<User | null> => {
   const normalizedEmail = normalizeEmail(email);
+
   const conn = await pool.getConnection();
   try {
-    const [rows]: any = await conn.query('SELECT * FROM users WHERE email = ?', [normalizedEmail]);
-    return rows[0] ? mapUser(rows[0]) : null;
+    const result: any = await conn.query(
+      'SELECT * FROM users WHERE email = ?',
+      [normalizedEmail]
+    );
+
+    const rows = result[0];
+
+    return rows && rows.length > 0 ? mapUser(rows[0]) : null;
   } finally {
     conn.release();
   }
@@ -113,12 +122,16 @@ export const findUserByEmail = async (email: string): Promise<User | null> => {
  * @returns Usuario válido o null si está expirado o no existe.
  */
 export const findUserByToken = async (token: string): Promise<User | null> => {
-  const query = `SELECT * FROM users WHERE token = ? AND token_expiration > NOW()`;
-
   const conn = await pool.getConnection();
   try {
-    const [rows]: any = await conn.query(query, [token]);
-    return rows[0] ? mapUser(rows[0]) : null;
+    const result: any = await conn.query(
+      `SELECT * FROM users WHERE token = ? AND token_expiration > NOW()`,
+      [token]
+    );
+
+    const rows = result[0];
+
+    return rows && rows.length > 0 ? mapUser(rows[0]) : null;
   } finally {
     conn.release();
   }
@@ -162,11 +175,12 @@ export const updateUserResetToken = async (
   token: string,
   tokenExpiration: Date
 ): Promise<void> => {
-  const query = `UPDATE users SET token = ?, token_expiration = ? WHERE id_user = ?`;
-
   const conn = await pool.getConnection();
   try {
-    await conn.query(query, [token, tokenExpiration, userId]);
+    await conn.query(
+      `UPDATE users SET token = ?, token_expiration = ? WHERE id_user = ?`,
+      [token, tokenExpiration, userId]
+    );
   } finally {
     conn.release();
   }
@@ -181,12 +195,16 @@ export const updateUserResetToken = async (
  * @returns Usuario válido o null.
  */
 export const findUserByResetToken = async (token: string): Promise<User | null> => {
-  const query = `SELECT * FROM users WHERE token = ? AND token_expiration > NOW()`;
-
   const conn = await pool.getConnection();
   try {
-    const [rows]: any = await conn.query(query, [token]);
-    return rows[0] ? mapUser(rows[0]) : null;
+    const result: any = await conn.query(
+      `SELECT * FROM users WHERE token = ? AND token_expiration > NOW()`,
+      [token]
+    );
+
+    const rows = result[0];
+
+    return rows && rows.length > 0 ? mapUser(rows[0]) : null;
   } finally {
     conn.release();
   }
@@ -204,15 +222,14 @@ export const updateUserPassword = async (
   userId: number,
   hashedPassword: string
 ): Promise<void> => {
-  const query = `
-    UPDATE users 
-    SET password = ?, token = NULL, token_expiration = NULL 
-    WHERE id_user = ?
-  `;
-
   const conn = await pool.getConnection();
   try {
-    await conn.query(query, [hashedPassword, userId]);
+    await conn.query(
+      `UPDATE users 
+       SET password = ?, token = NULL, token_expiration = NULL 
+       WHERE id_user = ?`,
+      [hashedPassword, userId]
+    );
   } finally {
     conn.release();
   }
@@ -235,8 +252,7 @@ export const findOrCreateUser = async (params: {
   const normalizedEmail = normalizeEmail(params.email);
 
   try {
-    // Buscar usuario existente con lógica segura
-    const [rows]: any = await conn.query(
+    const result: any = await conn.query(
       `
       SELECT * FROM users 
       WHERE email = ? 
@@ -245,25 +261,31 @@ export const findOrCreateUser = async (params: {
       [normalizedEmail, params.googleId]
     );
 
-    if (rows.length > 0) {
+    const rows = result[0];
+
+    if (rows && rows.length > 0) {
       return mapUser(rows[0]);
     }
 
-    // Crear usuario nuevo mediante Google
-    const [result]: any = await conn.query(
+    const insertResult: any = await conn.query(
       `
       INSERT INTO users (
-        email, username, password, activation, auth_provider,
-        google_id, password_request
-      ) VALUES (?, ?, NULL, 1, 'google', ?, 0)
+        email, username, password, activation,
+        auth_provider, google_id, password_request
+      )
+      VALUES (?, ?, NULL, 1, 'google', ?, 0)
       `,
       [normalizedEmail, params.username, params.googleId]
     );
 
-    if (!result.insertId) throw new Error('Failed to create Google auth user');
+    const insert = insertResult[0];
+
+    if (!insert?.insertId) {
+      throw new Error('Failed to create Google auth user');
+    }
 
     return {
-      id_user: result.insertId,
+      id_user: insert.insertId,
       email: normalizedEmail,
       username: params.username,
       password: null,
@@ -293,8 +315,14 @@ export const findOrCreateUser = async (params: {
 export const findUserById = async (id_user: number): Promise<User | null> => {
   const conn = await pool.getConnection();
   try {
-    const [rows]: any = await conn.query('SELECT * FROM users WHERE id_user = ?', [id_user]);
-    return rows[0] ? mapUser(rows[0]) : null;
+    const result: any = await conn.query(
+      'SELECT * FROM users WHERE id_user = ?',
+      [id_user]
+    );
+
+    const rows = result[0];
+
+    return rows && rows.length > 0 ? mapUser(rows[0]) : null;
   } finally {
     conn.release();
   }
