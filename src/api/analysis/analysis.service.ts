@@ -10,6 +10,33 @@
 
 import { pool } from '../../config/db';
 
+export interface AnalysisRunParams {
+  methods: string;
+  logfc: number;
+  cpm: number;
+  padjust: number;
+  batch: string | null;
+  generateZip: boolean;
+  top: boolean;
+}
+
+export interface ProjectRecord {
+  id_project: number;
+  user_id: number;
+  name: string;
+  description: string | null;
+  status: 'active' | 'inactive' | 'completed';
+  path: string;
+  locked_at: Date | null;
+  run_started_at: Date | null;
+  run_finished_at: Date | null;
+  run_params_json: string | null;
+  result_path: string | null;
+  run_error: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 /**
  * Guarda un nuevo proyecto en la base de datos.
  * 
@@ -81,7 +108,18 @@ export const projectExists = async (
  */
 export const getProjectsByUser = async (id_user: number): Promise<any[]> => {
   const query = `
-    SELECT id_project, name, description, status, path, created_at
+    SELECT
+      id_project,
+      name,
+      description,
+      status,
+      path,
+      locked_at,
+      run_started_at,
+      run_finished_at,
+      result_path,
+      run_error,
+      created_at
     FROM projects
     WHERE user_id = ?
     ORDER BY created_at DESC
@@ -143,6 +181,131 @@ export const getProjectPathById = async (
       [id_project, id_user]
     );
     return rows[0]?.path || null;
+  } finally {
+    conn.release();
+  }
+};
+
+/**
+ * Obtiene un proyecto específico perteneciente a un usuario.
+ */
+export const getProjectById = async (
+  id_project: number,
+  id_user: number
+): Promise<ProjectRecord | null> => {
+  const conn = await pool.getConnection();
+  try {
+    const rows = await conn.query(
+      `
+      SELECT
+        id_project,
+        user_id,
+        name,
+        description,
+        status,
+        path,
+        locked_at,
+        run_started_at,
+        run_finished_at,
+        run_params_json,
+        result_path,
+        run_error,
+        created_at,
+        updated_at
+      FROM projects
+      WHERE id_project = ? AND user_id = ?
+      LIMIT 1
+      `,
+      [id_project, id_user]
+    );
+
+    return rows[0] || null;
+  } finally {
+    conn.release();
+  }
+};
+
+/**
+ * Bloquea un proyecto para iniciar su corrida.
+ * Regresa false si el proyecto ya estaba bloqueado.
+ */
+export const lockProjectForRun = async (
+  id_project: number,
+  id_user: number,
+  runParams: AnalysisRunParams,
+  resultPath: string
+): Promise<boolean> => {
+  const conn = await pool.getConnection();
+  try {
+    const result = await conn.query(
+      `
+      UPDATE projects
+      SET
+        locked_at = NOW(),
+        run_started_at = NOW(),
+        run_finished_at = NULL,
+        run_params_json = ?,
+        result_path = ?,
+        run_error = NULL
+      WHERE id_project = ? AND user_id = ? AND locked_at IS NULL
+      `,
+      [JSON.stringify(runParams), resultPath, id_project, id_user]
+    );
+
+    return result.affectedRows === 1;
+  } finally {
+    conn.release();
+  }
+};
+
+/**
+ * Marca un proyecto como análisis exitoso.
+ */
+export const markProjectRunCompleted = async (
+  id_project: number,
+  id_user: number,
+  resultPath: string
+): Promise<void> => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.query(
+      `
+      UPDATE projects
+      SET
+        status = 'completed',
+        run_finished_at = NOW(),
+        result_path = ?,
+        run_error = NULL
+      WHERE id_project = ? AND user_id = ?
+      `,
+      [resultPath, id_project, id_user]
+    );
+  } finally {
+    conn.release();
+  }
+};
+
+/**
+ * Marca un proyecto como análisis fallido y registra el error.
+ */
+export const markProjectRunFailed = async (
+  id_project: number,
+  id_user: number,
+  errorMessage: string
+): Promise<void> => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.query(
+      `
+      UPDATE projects
+      SET
+        status = 'inactive',
+        run_finished_at = NOW(),
+        run_error = ?
+      WHERE id_project = ? AND user_id = ?
+      `,
+      [errorMessage, id_project, id_user]
+    );
   } finally {
     conn.release();
   }

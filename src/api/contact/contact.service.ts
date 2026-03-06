@@ -30,14 +30,17 @@ export const saveContactRequest = async (
     INSERT INTO contact_requests (full_name, email, phone, subject, message)
     VALUES (?, ?, ?, ?, ?)
   `;
-  await conn.query(query, [
-    request.full_name,
-    request.email,
-    request.phone,
-    request.subject,
-    request.message,
-  ]);
-  conn.release();
+  try {
+    await conn.query(query, [
+      request.full_name,
+      request.email,
+      request.phone,
+      request.subject,
+      request.message,
+    ]);
+  } finally {
+    conn.release();
+  }
 };
 
 /**

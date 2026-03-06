@@ -93,6 +93,25 @@ app.get(appConfig.basePath, (req: Request, res: Response) => {
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('[ERROR] Unhandled:', err);
 
+  if (err?.type === 'entity.parse.failed') {
+    sendErrorResponse(res, 'JSON inválido en el body de la solicitud', null, 400);
+    return;
+  }
+
+  if (err?.name === 'MulterError') {
+    const fileErrorMessage =
+      err.code === 'LIMIT_FILE_SIZE'
+        ? 'Archivo demasiado grande. El máximo permitido es 25 MB'
+        : 'Error al procesar archivo de subida';
+    sendErrorResponse(res, fileErrorMessage, null, 400);
+    return;
+  }
+
+  if (typeof err?.message === 'string' && err.message.includes('Invalid file type')) {
+    sendErrorResponse(res, err.message, null, 400);
+    return;
+  }
+
   sendErrorResponse(
     res,
     err.message || 'Internal Server Error',

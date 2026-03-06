@@ -44,7 +44,7 @@ export const projectStorage = multer.diskStorage({
       const projectFolder = sanitizeName(projectName);
 
       // Ruta base configurable según entorno (.env)
-      const basePath = process.env.PROJECTS_BASE_PATH || path.resolve(__dirname, '../../../projects');
+      const basePath = process.env.PROJECTS_BASE_PATH || path.resolve(process.cwd(), 'projects');
       const fullFolder = path.join(basePath, emailPrefix, projectFolder);
 
       ensureDirectory(fullFolder);

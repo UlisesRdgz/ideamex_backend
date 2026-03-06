@@ -11,7 +11,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { body, validationResult } from 'express-validator';
+import { body, param, validationResult } from 'express-validator';
 import { sendErrorResponse } from '../utils/response';
 
 /**
@@ -146,4 +146,56 @@ export const validateContactForm = [
     .withMessage('Máximo 1000 caracteres')
     .trim()
     .escape(),
+];
+
+/**
+ * Reglas de validación para ejecutar el análisis de un proyecto.
+ */
+export const validateRunAnalysis = [
+  param('projectId')
+    .isInt({ min: 1 })
+    .withMessage('El projectId debe ser un entero positivo'),
+
+  body('methods')
+    .optional()
+    .isString()
+    .withMessage('methods debe ser una cadena')
+    .matches(/^[1-6]+$/)
+    .withMessage('methods solo permite dígitos entre 1 y 6')
+    .custom((value: string) => /[1-5]/.test(value))
+    .withMessage('methods debe incluir al menos un método entre 1 y 5')
+    .custom((value: string) => !value.includes('6') || /[1-4]/.test(value))
+    .withMessage('Si incluyes 6 (integración), también debes incluir al menos un método DE (1-4)'),
+
+  body('logfc')
+    .optional()
+    .isFloat({ gt: 0 })
+    .withMessage('logfc debe ser un número mayor a 0'),
+
+  body('cpm')
+    .optional()
+    .isFloat({ gt: 0 })
+    .withMessage('cpm debe ser un número mayor a 0'),
+
+  body('padjust')
+    .optional()
+    .isFloat({ gt: 0, lt: 1 })
+    .withMessage('padjust debe ser un número mayor a 0 y menor a 1'),
+
+  body('batch')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('batch debe ser una cadena')
+    .matches(/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?)*$/)
+    .withMessage('batch debe ser una lista numérica separada por comas'),
+
+  body('generateZip')
+    .optional()
+    .isBoolean()
+    .withMessage('generateZip debe ser booleano'),
+
+  body('top')
+    .optional()
+    .isBoolean()
+    .withMessage('top debe ser booleano'),
 ];

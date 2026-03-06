@@ -28,18 +28,22 @@ export const createUser = async (
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   const conn = await pool.getConnection();
-  const result = await conn.query(query, [
-    user.email,
-    user.username,
-    user.password,
-    user.activation,
-    user.token,
-    user.token_expiration,
-    user.password_request,
-    user.google_id,
-    user.auth_provider,
-  ]);
-  conn.release();
+  let result: { insertId: number };
+  try {
+    result = await conn.query(query, [
+      user.email,
+      user.username,
+      user.password,
+      user.activation,
+      user.token,
+      user.token_expiration,
+      user.password_request,
+      user.google_id,
+      user.auth_provider,
+    ]);
+  } finally {
+    conn.release();
+  }
 
   return {
     id_user: result.insertId,
@@ -60,9 +64,12 @@ export const createUser = async (
  */
 export const findUserByEmail = async (email: string): Promise<User | null> => {
   const conn = await pool.getConnection();
-  const rows = await conn.query('SELECT * FROM users WHERE email = ?', [email]);
-  conn.release();
-  return rows[0] || null;
+  try {
+    const rows = await conn.query('SELECT * FROM users WHERE email = ?', [email]);
+    return rows[0] || null;
+  } finally {
+    conn.release();
+  }
 };
 
 /**
@@ -161,42 +168,42 @@ export const findOrCreateUser = async (params: {
   googleId: string;
 }): Promise<User> => {
   const conn = await pool.getConnection();
+  try {
+    // Buscar usuario existente
+    const [existing]: any = await conn.query(
+      'SELECT * FROM users WHERE email = ? OR google_id = ?',
+      [params.email, params.googleId]
+    );
 
-  // Buscar usuario existente
-  const [existing]: any = await conn.query(
-    'SELECT * FROM users WHERE email = ? OR google_id = ?',
-    [params.email, params.googleId]
-  );
+    if (existing) {
+      return existing;
+    }
 
-  if (existing) {
+    // Crear usuario nuevo
+    const result = await conn.query(
+      `INSERT INTO users (email, username, password, activation, auth_provider, google_id, password_request)
+       VALUES (?, ?, NULL, 1, 'google', ?, 0)`,
+      [params.email, params.username, params.googleId]
+    );
+
+    return {
+      id_user: result.insertId,
+      email: params.email,
+      username: params.username,
+      password: null,
+      activation: 1,
+      token: null,
+      password_request: 0,
+      last_session: null,
+      created_at: new Date(),
+      updated_at: new Date(),
+      google_id: params.googleId,
+      token_expiration: null,
+      auth_provider: 'google',
+    };
+  } finally {
     conn.release();
-    return existing;
   }
-
-  // Crear usuario nuevo
-  const result = await conn.query(
-    `INSERT INTO users (email, username, password, activation, auth_provider, google_id, password_request)
-     VALUES (?, ?, NULL, 1, 'google', ?, 0)`,
-    [params.email, params.username, params.googleId]
-  );
-
-  conn.release();
-
-  return {
-    id_user: result.insertId,
-    email: params.email,
-    username: params.username,
-    password: null,
-    activation: 1,
-    token: null,
-    password_request: 0,
-    last_session: null,
-    created_at: new Date(),
-    updated_at: new Date(),
-    google_id: params.googleId,
-    token_expiration: null,
-    auth_provider: 'google',
-  };
 };
 
 /**
@@ -209,7 +216,10 @@ export const findOrCreateUser = async (params: {
  */
 export const findUserById = async (id_user: number): Promise<User | null> => {
   const conn = await pool.getConnection();
-  const rows = await conn.query('SELECT * FROM users WHERE id_user = ?', [id_user]);
-  conn.release();
-  return rows[0] || null;
+  try {
+    const rows = await conn.query('SELECT * FROM users WHERE id_user = ?', [id_user]);
+    return rows[0] || null;
+  } finally {
+    conn.release();
+  }
 };

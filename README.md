@@ -30,6 +30,9 @@ Antes de ejecutar el proyecto crea un archivo `.env` en la raíz con, al menos, 
 | `DB_PASSWORD` | Contraseña del usuario de la base de datos | `""` |
 | `DB_NAME` | Nombre de la base de datos | `ideamex` |
 | `PROJECTS_BASE_PATH` | Carpeta donde se guardan los archivos subidos | `./projects` |
+| `ANALYSIS_RSCRIPT_BIN` | Binario para ejecutar R (ej. `Rscript`) | `Rscript` |
+| `ANALYSIS_SCRIPT_PATH` | Ruta absoluta al script `RunMainIDEAMEX.r` | `""` |
+| `ANALYSIS_SOURCES_PATH` | Ruta base para `-s` (archivos fuente del pipeline) | `""` |
 | `SMTP_HOST` | Servidor SMTP para correos transaccionales | `smtp.gmail.com` |
 | `SMTP_PORT` | Puerto SMTP | `587` |
 | `SMTP_USER` | Usuario SMTP | `""` |
