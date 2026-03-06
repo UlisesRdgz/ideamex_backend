@@ -17,19 +17,8 @@
  *   post:
  *     summary: Subir un archivo de proyecto
  *     tags: [Analysis]
- *     parameters:
- *       - in: header
- *         name: x-user-id
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID del usuario autenticado
- *       - in: header
- *         name: x-username
- *         required: true
- *         schema:
- *           type: string
- *         description: Nombre de usuario autenticado
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -38,13 +27,13 @@
  *             type: object
  *             required:
  *               - file
- *               - name
+ *               - projectName
  *             properties:
  *               file:
  *                 type: string
  *                 format: binary
  *                 description: Archivo a subir (.csv, .tsv o .txt)
- *               name:
+ *               projectName:
  *                 type: string
  *                 description: Nombre del proyecto
  *               description:
@@ -56,7 +45,67 @@
  *       400:
  *         description: Error de validación o formato
  *       401:
- *         description: Usuario no autenticado (headers faltantes)
+ *         description: Usuario no autenticado o token inválido
+ *       500:
+ *         description: Error interno del servidor
+ */
+
+/**
+ * @swagger
+ * /analysis/project/{projectId}/run:
+ *   post:
+ *     summary: Inicia la corrida de análisis para un proyecto y lo bloquea
+ *     tags: [Analysis]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del proyecto
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               methods:
+ *                 type: string
+ *                 example: "123456"
+ *                 description: Debe incluir al menos un método de 1-5. Si incluye 6, también debe incluir 1-4.
+ *               logfc:
+ *                 type: number
+ *                 example: 1
+ *               cpm:
+ *                 type: number
+ *                 example: 1
+ *               padjust:
+ *                 type: number
+ *                 example: 0.01
+ *               batch:
+ *                 type: string
+ *                 example: "0,0,5,1"
+ *                 description: Opcional. Lista numérica separada por comas con el mismo número de elementos que muestras.
+ *               generateZip:
+ *                 type: boolean
+ *                 example: true
+ *               top:
+ *                 type: boolean
+ *                 example: true
+ *     responses:
+ *       202:
+ *         description: Corrida iniciada correctamente
+ *       400:
+ *         description: Parámetros inválidos
+ *       401:
+ *         description: Usuario no autenticado
+ *       404:
+ *         description: Proyecto no encontrado
+ *       409:
+ *         description: Proyecto ya bloqueado o ya iniciado
  *       500:
  *         description: Error interno del servidor
  */

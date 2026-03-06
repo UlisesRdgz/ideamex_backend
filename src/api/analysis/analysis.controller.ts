@@ -13,15 +13,488 @@
 
 import fs from 'fs';
 import path from 'path';
+import { spawn } from 'child_process';
 import { Request, Response } from 'express';
+import { sanitizeEmailPrefix, sanitizeName } from '../../utils/file';
 import {
+  AnalysisRunParams,
   createProject,
   projectExists,
   getProjectsByUser,
-  getProjectPathById,
+  getProjectById,
   deleteProjectById,
+  lockProjectForRun,
+  markProjectRunCompleted,
+  markProjectRunFailed,
 } from './analysis.service';
 import { sendErrorResponse, sendSuccessResponse } from '../../utils/response';
+
+const DEFAULT_RUN_PARAMS: AnalysisRunParams = {
+  methods: '123456',
+  logfc: 1,
+  cpm: 1,
+  padjust: 0.01,
+  batch: null,
+  generateZip: true,
+  top: true,
+};
+
+const RUN_LOG_FILE = 'RunSummary.log';
+const SAMPLE_NAME_PATTERN = /^.+_[a-zA-Z0-9]+$/;
+
+const getProjectsBasePath = (): string => {
+  return process.env.PROJECTS_BASE_PATH || path.resolve(process.cwd(), 'projects');
+};
+
+const toRBoolean = (value: boolean): string => (value ? 'TRUE' : 'FALSE');
+
+const sanitizeErrorMessage = (rawMessage: string): string => {
+  return rawMessage.replace(/\s+/g, ' ').trim().slice(0, 2000);
+};
+
+const isDuplicateEntryError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const err = error as { code?: string; errno?: number };
+  return err.code === 'ER_DUP_ENTRY' || err.errno === 1062;
+};
+
+const parseBooleanField = (value: unknown, fallback: boolean): boolean | null => {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1') {
+      return true;
+    }
+    if (normalized === 'false' || normalized === '0') {
+      return false;
+    }
+  }
+
+  return null;
+};
+
+const resolveProjectAbsolutePath = (basePath: string, projectRelativePath: string): string | null => {
+  if (!projectRelativePath || projectRelativePath.trim().length === 0) {
+    return null;
+  }
+
+  const normalizedBasePath = path.resolve(basePath);
+  const absolutePath = path.resolve(normalizedBasePath, ...projectRelativePath.split('/'));
+
+  if (
+    absolutePath !== normalizedBasePath &&
+    !absolutePath.startsWith(`${normalizedBasePath}${path.sep}`)
+  ) {
+    return null;
+  }
+
+  return absolutePath;
+};
+
+const detectCountTableSeparator = (headerLine: string): ',' | '\t' | null => {
+  if (headerLine.includes(',')) {
+    return ',';
+  }
+
+  if (headerLine.includes('\t')) {
+    return '\t';
+  }
+
+  return null;
+};
+
+const parseCountTableHeader = (
+  inputPath: string
+): { sampleNames: string[]; conditionNames: string[] } | null => {
+  const content = fs.readFileSync(inputPath, 'utf-8');
+  const firstLine = content.split(/\r?\n/, 1)[0]?.replace(/^\uFEFF/, '') || '';
+
+  if (!firstLine.trim()) {
+    return null;
+  }
+
+  const separator = detectCountTableSeparator(firstLine);
+  if (!separator) {
+    return null;
+  }
+
+  const columns = firstLine.split(separator).map((value) => value.trim());
+  if (columns.length < 2) {
+    return null;
+  }
+
+  const sampleNames = columns.slice(1).filter((value) => value.length > 0);
+  if (sampleNames.length === 0) {
+    return null;
+  }
+
+  const conditionNames = sampleNames.map((sample) => sample.replace(/_[a-zA-Z0-9]+$/, ''));
+  return { sampleNames, conditionNames };
+};
+
+const validateSampleNamesAndBatch = (
+  inputPath: string,
+  runParams: AnalysisRunParams
+): { ok: true } | { ok: false; error: string } => {
+  let metadata: { sampleNames: string[]; conditionNames: string[] } | null = null;
+  try {
+    metadata = parseCountTableHeader(inputPath);
+  } catch {
+    return {
+      ok: false,
+      error: 'Unable to read count table from server storage',
+    };
+  }
+
+  if (!metadata) {
+    return {
+      ok: false,
+      error: 'Input count table header is invalid (missing separator or sample columns)',
+    };
+  }
+
+  if (metadata.sampleNames.length < 2) {
+    return {
+      ok: false,
+      error: 'The count table must include at least 2 sample columns',
+    };
+  }
+
+  const invalidSampleNames = metadata.sampleNames.filter((sample) => !SAMPLE_NAME_PATTERN.test(sample));
+  if (invalidSampleNames.length > 0) {
+    return {
+      ok: false,
+      error:
+        'Invalid sample names. Expected pattern "condition_sample" (examples: Ctrl_1,Treat_1)',
+    };
+  }
+
+  const hasPairwiseMethods = /[1-4]/.test(runParams.methods);
+  if (hasPairwiseMethods) {
+    const uniqueConditions = new Set(metadata.conditionNames);
+    if (uniqueConditions.size < 2) {
+      return {
+        ok: false,
+        error:
+          'At least 2 different conditions are required in sample names for differential expression methods',
+      };
+    }
+  }
+
+  if (runParams.batch !== null) {
+    const batchValues = runParams.batch.split(',').map((value) => value.trim());
+    if (batchValues.length !== metadata.sampleNames.length) {
+      return {
+        ok: false,
+        error: `Batch length (${batchValues.length}) must match number of samples (${metadata.sampleNames.length})`,
+      };
+    }
+  }
+
+  return { ok: true };
+};
+
+const parseRunStatusFromStdout = (stdout: string): number | null => {
+  const matches = stdout.match(/\b[0-4]\b/g);
+  if (!matches || matches.length === 0) {
+    return null;
+  }
+
+  const value = Number(matches[matches.length - 1]);
+  if (!Number.isInteger(value)) {
+    return null;
+  }
+
+  return value;
+};
+
+const getRunStatusMessage = (runStatus: number): string => {
+  switch (runStatus) {
+    case 0:
+      return 'Run finished successfully';
+    case 1:
+      return 'Main analysis program failed (runStatus=1)';
+    case 2:
+      return 'Mandatory parameters were omitted (runStatus=2)';
+    case 3:
+      return 'Required R packages are missing (runStatus=3)';
+    case 4:
+      return 'R scripts directory is invalid (runStatus=4)';
+    default:
+      return `Unknown runStatus from R script: ${runStatus}`;
+  }
+};
+
+const cleanRunLogLine = (line: string): string => {
+  return line
+    .trim()
+    .replace(/^\[\d+\]\s*/, '')
+    .replace(/^"+|"+$/g, '')
+    .trim();
+};
+
+const findFailureInRunSummaryLog = (outputDir: string): string | null => {
+  const logPath = path.join(outputDir, RUN_LOG_FILE);
+  if (!fs.existsSync(logPath)) {
+    return null;
+  }
+
+  const logContent = fs.readFileSync(logPath, 'utf-8');
+  const lines = logContent.split(/\r?\n/).map(cleanRunLogLine).filter((line) => line.length > 0);
+
+  const firstFailureLine = lines.find((line) => {
+    return (
+      /\bfailed\b/i.test(line) ||
+      /-----\s*error\s*-----/i.test(line) ||
+      /execution halted/i.test(line) ||
+      /is not installed/i.test(line) ||
+      /unable to read count table/i.test(line) ||
+      /count table has/i.test(line)
+    );
+  });
+
+  if (!firstFailureLine) {
+    return null;
+  }
+
+  return `RunSummary.log indicates failure: ${firstFailureLine}`;
+};
+
+const normalizeRunParams = (
+  payload: Record<string, unknown>
+): { params: AnalysisRunParams | null; error?: string } => {
+  const methodsInput =
+    typeof payload.methods === 'string' && payload.methods.trim().length > 0
+      ? payload.methods.trim()
+      : DEFAULT_RUN_PARAMS.methods;
+
+  if (!/^[1-6]+$/.test(methodsInput)) {
+    return { params: null, error: 'methods must contain digits from 1 to 6 only' };
+  }
+
+  const methods = Array.from(new Set(methodsInput.split(''))).join('');
+  const hasAnyRunnableMethod = /[1-5]/.test(methods);
+  if (!hasAnyRunnableMethod) {
+    return { params: null, error: 'methods must include at least one method from 1 to 5' };
+  }
+
+  if (methods.includes('6') && !/[1-4]/.test(methods)) {
+    return { params: null, error: 'method 6 (integration) requires at least one DE method (1-4)' };
+  }
+
+  const logfcRaw = payload.logfc ?? DEFAULT_RUN_PARAMS.logfc;
+  const cpmRaw = payload.cpm ?? DEFAULT_RUN_PARAMS.cpm;
+  const padjustRaw = payload.padjust ?? DEFAULT_RUN_PARAMS.padjust;
+
+  const logfc = Number(logfcRaw);
+  const cpm = Number(cpmRaw);
+  const padjust = Number(padjustRaw);
+
+  if (!Number.isFinite(logfc) || logfc <= 0) {
+    return { params: null, error: 'logfc must be a number greater than 0' };
+  }
+  if (!Number.isFinite(cpm) || cpm <= 0) {
+    return { params: null, error: 'cpm must be a number greater than 0' };
+  }
+  if (!Number.isFinite(padjust) || padjust <= 0 || padjust >= 1) {
+    return { params: null, error: 'padjust must be a number between 0 and 1' };
+  }
+
+  let batchInput: string | null = DEFAULT_RUN_PARAMS.batch;
+  if (payload.batch !== undefined && payload.batch !== null && payload.batch !== '') {
+    if (typeof payload.batch !== 'string') {
+      return { params: null, error: 'batch must be a comma-separated numeric list' };
+    }
+
+    const normalizedBatch = payload.batch
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+      .join(',');
+
+    if (normalizedBatch.length === 0) {
+      batchInput = null;
+    } else if (!/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?)*$/.test(normalizedBatch)) {
+      return { params: null, error: 'batch must be a comma-separated numeric list' };
+    } else {
+      batchInput = normalizedBatch;
+    }
+  }
+
+  const generateZip = parseBooleanField(payload.generateZip, DEFAULT_RUN_PARAMS.generateZip);
+  if (generateZip === null) {
+    return { params: null, error: 'generateZip must be boolean' };
+  }
+
+  const top = parseBooleanField(payload.top, DEFAULT_RUN_PARAMS.top);
+  if (top === null) {
+    return { params: null, error: 'top must be boolean' };
+  }
+
+  return {
+    params: {
+      methods,
+      logfc,
+      cpm,
+      padjust,
+      batch: batchInput,
+      generateZip,
+      top,
+    },
+  };
+};
+
+const executeAnalysisInBackground = (params: {
+  projectId: number;
+  userId: number;
+  inputPath: string;
+  outputDir: string;
+  resultPath: string;
+  runParams: AnalysisRunParams;
+}): void => {
+  const rscriptBin = process.env.ANALYSIS_RSCRIPT_BIN || 'Rscript';
+  const scriptPath = process.env.ANALYSIS_SCRIPT_PATH;
+  const sourcesPath = process.env.ANALYSIS_SOURCES_PATH;
+
+  if (!scriptPath) {
+    void markProjectRunFailed(
+      params.projectId,
+      params.userId,
+      'ANALYSIS_SCRIPT_PATH is not configured in environment variables'
+    );
+    return;
+  }
+
+  if (!fs.existsSync(scriptPath)) {
+    void markProjectRunFailed(
+      params.projectId,
+      params.userId,
+      `Analysis script not found at: ${scriptPath}`
+    );
+    return;
+  }
+
+  const args = [scriptPath];
+
+  if (sourcesPath) {
+    args.push('-s', sourcesPath);
+  }
+
+  args.push(
+    '-i',
+    params.inputPath,
+    '-o',
+    params.outputDir,
+    '-m',
+    params.runParams.methods,
+    '-l',
+    String(params.runParams.logfc),
+    '-f',
+    String(params.runParams.cpm),
+    '-u',
+    String(params.runParams.padjust)
+  );
+
+  if (params.runParams.batch !== null) {
+    args.push('-b', params.runParams.batch);
+  }
+
+  args.push('-g', toRBoolean(params.runParams.generateZip), '-t', toRBoolean(params.runParams.top));
+
+  const child = spawn(rscriptBin, args, {
+    cwd: params.outputDir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let settled = false;
+  let stdout = '';
+  let stderr = '';
+
+  const finalizeSuccess = (): void => {
+    if (settled) {
+      return;
+    }
+
+    settled = true;
+    void markProjectRunCompleted(params.projectId, params.userId, params.resultPath).catch((dbError) => {
+      console.error('[ANALYSIS] Error saving success status:', dbError);
+    });
+  };
+
+  const finalizeFailure = (message: string): void => {
+    if (settled) {
+      return;
+    }
+
+    settled = true;
+    const detail = sanitizeErrorMessage(message);
+    void markProjectRunFailed(params.projectId, params.userId, detail).catch((dbError) => {
+      console.error('[ANALYSIS] Error saving failure status:', dbError);
+    });
+  };
+
+  child.stdout.on('data', (chunk) => {
+    if (stdout.length < 4000) {
+      stdout += String(chunk);
+    }
+  });
+
+  child.stderr.on('data', (chunk) => {
+    if (stderr.length < 4000) {
+      stderr += String(chunk);
+    }
+  });
+
+  child.on('error', (error) => {
+    finalizeFailure(`Failed to start process: ${error.message}`);
+  });
+
+  child.on('close', (code) => {
+    const runStatus = parseRunStatusFromStdout(stdout);
+    const runLogFailure = findFailureInRunSummaryLog(params.outputDir);
+
+    if (code === 0 && (runStatus === 0 || runStatus === null) && !runLogFailure) {
+      finalizeSuccess();
+      return;
+    }
+
+    if (runStatus !== null && runStatus !== 0) {
+      const fromStatus = getRunStatusMessage(runStatus);
+      const fromLog = runLogFailure ? ` | ${runLogFailure}` : '';
+      finalizeFailure(`${fromStatus}${fromLog}`);
+      return;
+    }
+
+    if (runLogFailure) {
+      finalizeFailure(runLogFailure);
+      return;
+    }
+
+    const stderrMessage = sanitizeErrorMessage(stderr);
+    const stdoutMessage = sanitizeErrorMessage(stdout);
+    const statusMessage = runStatus === null ? '' : getRunStatusMessage(runStatus);
+    const detail =
+      stderrMessage.length > 0
+        ? stderrMessage
+        : stdoutMessage.length > 0
+          ? stdoutMessage
+          : statusMessage.length > 0
+            ? statusMessage
+            : `Process ended with code ${code ?? 'unknown'}`;
+
+    finalizeFailure(detail);
+  });
+};
 
 /**
  * Controlador para manejar la carga de un nuevo proyecto.
@@ -58,14 +531,26 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
     // Verificar duplicado
     const alreadyExists = await projectExists(user.id_user, projectName);
     if (alreadyExists) {
+      try {
+        if (file.path && fs.existsSync(file.path)) {
+          fs.rmSync(file.path, { force: true });
+          const parentFolder = path.dirname(file.path);
+          if (fs.existsSync(parentFolder) && fs.readdirSync(parentFolder).length === 0) {
+            fs.rmdirSync(parentFolder);
+          }
+        }
+      } catch (cleanupError) {
+        console.error('[FS] Error cleaning duplicate upload:', cleanupError);
+      }
+
       sendErrorResponse(res, 'A project with the same name already exists', null, 409);
       return;
     }
 
-    // Construir la ruta relativa del archivo como se guardó realmente por multer
-    const emailPrefix = user.email.split('@')[0];
-    const projectFolder = projectName.replace(/\s+/g, '_').toLowerCase();
-    const relativePath = `${emailPrefix}/${projectFolder}/${file.filename}`;
+    // Construir la ruta relativa del archivo, manteniendo la misma sanitización que multer
+    const emailPrefix = sanitizeEmailPrefix(user.email);
+    const projectFolder = sanitizeName(projectName);
+    const relativePath = path.posix.join(emailPrefix, projectFolder, file.filename);
 
     // Insertar proyecto en la base de datos
     const id_project = await createProject(
@@ -88,6 +573,19 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
     );
   } catch (error) {
     console.error('Error in handleProjectUpload:', error);
+
+    if (isDuplicateEntryError(error)) {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        try {
+          fs.rmSync(req.file.path, { force: true });
+        } catch (cleanupError) {
+          console.error('[FS] Error cleaning file after duplicate key:', cleanupError);
+        }
+      }
+      sendErrorResponse(res, 'A project with the same name already exists', null, 409);
+      return;
+    }
+
     sendErrorResponse(res, 'Server error during project upload', null, 500);
   }
 };
@@ -138,15 +636,26 @@ export const handleDeleteProject = async (req: Request, res: Response): Promise<
       return;
     }
     
-    const relativePath = await getProjectPathById(projectId, user.id_user);
+    const project = await getProjectById(projectId, user.id_user);
 
-    if (!relativePath) {
+    if (!project) {
       sendErrorResponse(res, 'Project not found or access denied', null, 404);
       return;
     }
 
-    const basePath = process.env.PROJECTS_BASE_PATH || path.resolve(__dirname, '../../../../projects');
-    const folderPath = path.join(basePath, ...relativePath.split('/').slice(0, -1));
+    if (project.locked_at) {
+      sendErrorResponse(res, 'Project is locked and cannot be deleted after analysis start', null, 409);
+      return;
+    }
+
+    const basePath = getProjectsBasePath();
+    const absoluteFilePath = resolveProjectAbsolutePath(basePath, project.path);
+    if (!absoluteFilePath) {
+      sendErrorResponse(res, 'Project path is invalid', null, 500);
+      return;
+    }
+
+    const folderPath = path.dirname(absoluteFilePath);
 
     try {
       if (fs.existsSync(folderPath)) {
@@ -164,5 +673,108 @@ export const handleDeleteProject = async (req: Request, res: Response): Promise<
   } catch (error) {
     console.error('Error in handleDeleteProject:', error);
     sendErrorResponse(res, 'Server error during project deletion', null, 500);
+  }
+};
+
+/**
+ * Controlador para iniciar la corrida de análisis de un proyecto.
+ * Una vez iniciada, el proyecto queda bloqueado y no puede modificarse.
+ *
+ * @route POST /analysis/project/:projectId/run
+ * @access Privado (requiere autenticación Bearer)
+ */
+export const handleRunProjectAnalysis = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    const projectId = Number(req.params.projectId);
+
+    if (!user || typeof user.id_user !== 'number') {
+      sendErrorResponse(res, 'Missing or invalid user information from token', null, 400);
+      return;
+    }
+
+    if (isNaN(projectId)) {
+      sendErrorResponse(res, 'Invalid project ID', null, 400);
+      return;
+    }
+
+    const project = await getProjectById(projectId, user.id_user);
+
+    if (!project) {
+      sendErrorResponse(res, 'Project not found or access denied', null, 404);
+      return;
+    }
+
+    if (project.locked_at) {
+      sendErrorResponse(res, 'This project already started analysis and is locked', null, 409);
+      return;
+    }
+
+    const parsed = normalizeRunParams((req.body || {}) as Record<string, unknown>);
+    if (!parsed.params) {
+      sendErrorResponse(res, parsed.error || 'Invalid analysis parameters', null, 400);
+      return;
+    }
+
+    const basePath = getProjectsBasePath();
+    const inputPath = resolveProjectAbsolutePath(basePath, project.path);
+    if (!inputPath) {
+      sendErrorResponse(res, 'Project path is invalid', null, 500);
+      return;
+    }
+
+    if (!fs.existsSync(inputPath)) {
+      sendErrorResponse(res, 'Input file not found on server', null, 404);
+      return;
+    }
+
+    const sampleValidation = validateSampleNamesAndBatch(inputPath, parsed.params);
+    if (!sampleValidation.ok) {
+      sendErrorResponse(res, sampleValidation.error, null, 400);
+      return;
+    }
+
+    const outputDir = path.dirname(inputPath);
+    const resultPath = path.relative(path.resolve(basePath), outputDir).split(path.sep).join('/');
+
+    const scriptPath = process.env.ANALYSIS_SCRIPT_PATH;
+    if (!scriptPath || !fs.existsSync(scriptPath)) {
+      sendErrorResponse(
+        res,
+        'Analysis runtime is not configured correctly on server (ANALYSIS_SCRIPT_PATH)',
+        null,
+        500
+      );
+      return;
+    }
+
+    const locked = await lockProjectForRun(projectId, user.id_user, parsed.params, resultPath);
+
+    if (!locked) {
+      sendErrorResponse(res, 'Project already locked by another run', null, 409);
+      return;
+    }
+
+    executeAnalysisInBackground({
+      projectId,
+      userId: user.id_user,
+      inputPath,
+      outputDir,
+      resultPath,
+      runParams: parsed.params,
+    });
+
+    sendSuccessResponse(
+      res,
+      'Analysis started successfully',
+      {
+        id_project: projectId,
+        run_status: 'running',
+      },
+      202
+    );
+  } catch (error) {
+    console.error('Error in handleRunProjectAnalysis:', error);
+    sendErrorResponse(res, 'Server error while starting analysis', null, 500);
   }
 };

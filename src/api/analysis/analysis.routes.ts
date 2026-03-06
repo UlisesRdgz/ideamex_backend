@@ -15,10 +15,12 @@ import { Router } from 'express';
 import {
   handleProjectUpload,
   handleGetUserProjects,
-  handleDeleteProject
+  handleDeleteProject,
+  handleRunProjectAnalysis,
 } from './analysis.controller';
 import { uploadProject } from '../../config/multer';
 import { requireUser } from '../auth/auth.middleware';
+import { validateRequest, validateRunAnalysis } from '../../middlewares/validation.middleware';
 
 const router = Router();
 
@@ -54,6 +56,19 @@ router.delete(
   '/project/:projectId',
   requireUser,
   handleDeleteProject
+);
+
+/**
+ * @route POST /analysis/project/:projectId/run
+ * @desc Inicia la corrida de análisis para un proyecto y lo bloquea
+ * @access Privado (requiere autenticación Bearer)
+ */
+router.post(
+  '/project/:projectId/run',
+  requireUser,
+  validateRunAnalysis,
+  validateRequest,
+  handleRunProjectAnalysis
 );
 
 export default router;
