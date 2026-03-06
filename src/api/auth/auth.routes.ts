@@ -16,12 +16,16 @@ import {
   registerUser,
   activateUser,
   loginUser,
+  startGoogleOAuth,
+  handleGoogleOAuthCallback,
+  loginWithGoogle,
   requestPasswordReset,
   resetPassword,
 } from './auth.controller';
 import {
   validateRegistration,
   validateLogin,
+  validateGoogleLogin,
   validateRequest,
   validatePasswordResetRequest,
   validatePasswordReset,
@@ -62,6 +66,32 @@ router.post(
   validateLogin,
   validateRequest,
   loginUser
+);
+
+/**
+ * @route GET /api/v1/ideamex/auth/google
+ * @desc Inicia OAuth2 con Google (redirección)
+ * @access Público
+ */
+router.get('/google', startGoogleOAuth);
+
+/**
+ * @route GET /api/v1/ideamex/auth/google/callback
+ * @desc Callback OAuth2 de Google
+ * @access Público
+ */
+router.get('/google/callback', handleGoogleOAuthCallback);
+
+/**
+ * @route POST /api/v1/ideamex/auth/google/login
+ * @desc Inicia sesión con token de Google (idToken)
+ * @access Público
+ */
+router.post(
+  '/google/login',
+  validateGoogleLogin,
+  validateRequest,
+  loginWithGoogle
 );
 
 /**

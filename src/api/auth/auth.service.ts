@@ -169,17 +169,36 @@ export const findOrCreateUser = async (params: {
 }): Promise<User> => {
   const conn = await pool.getConnection();
   try {
-    // Buscar usuario existente
     const [existing]: any = await conn.query(
       'SELECT * FROM users WHERE email = ? OR google_id = ?',
       [params.email, params.googleId]
     );
 
     if (existing) {
+      if (existing.auth_provider === 'local') {
+        throw new Error('LOCAL_ACCOUNT_EXISTS');
+      }
+
+      if (!existing.google_id) {
+        await conn.query(
+          `UPDATE users
+           SET google_id = ?, activation = 1, token = NULL, token_expiration = NULL
+           WHERE id_user = ?`,
+          [params.googleId, existing.id_user]
+        );
+
+        return {
+          ...existing,
+          google_id: params.googleId,
+          activation: 1,
+          token: null,
+          token_expiration: null,
+        };
+      }
+
       return existing;
     }
 
-    // Crear usuario nuevo
     const result = await conn.query(
       `INSERT INTO users (email, username, password, activation, auth_provider, google_id, password_request)
        VALUES (?, ?, NULL, 1, 'google', ?, 0)`,

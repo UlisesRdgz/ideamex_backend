@@ -85,6 +85,17 @@ export const validateLogin = [
 ];
 
 /**
+ * Reglas de validación para inicio de sesión con Google.
+ */
+export const validateGoogleLogin = [
+  body('idToken')
+    .isString()
+    .withMessage('idToken debe ser una cadena')
+    .notEmpty()
+    .withMessage('idToken es obligatorio'),
+];
+
+/**
  * Reglas de validación para solicitar recuperación de contraseña.
  */
 export const validatePasswordResetRequest = [

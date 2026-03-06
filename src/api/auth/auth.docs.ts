@@ -44,6 +44,15 @@
  *         password:
  *           type: string
  *
+ *     GoogleLoginInput:
+ *       type: object
+ *       required:
+ *         - idToken
+ *       properties:
+ *         idToken:
+ *           type: string
+ *           description: Token ID generado por Google Sign-In en el frontend.
+ *
  *     PasswordResetRequest:
  *       type: object
  *       required:
@@ -127,6 +136,68 @@
  *         description: Credenciales inválidas.
  *       403:
  *         description: Cuenta no activada o registrada con Google.
+ */
+
+/**
+ * @swagger
+ * /auth/google:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Inicia flujo OAuth2 con Google (redirección)
+ *     responses:
+ *       302:
+ *         description: Redirige a la pantalla de autorización de Google.
+ *       500:
+ *         description: Integración OAuth de Google no configurada.
+ */
+
+/**
+ * @swagger
+ * /auth/google/callback:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Callback OAuth2 de Google
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: Código de autorización enviado por Google.
+ *     responses:
+ *       200:
+ *         description: Login/registro con Google exitoso.
+ *       400:
+ *         description: Código OAuth faltante.
+ *       401:
+ *         description: No se pudo validar identidad con Google.
+ *       409:
+ *         description: El correo ya existe como cuenta local.
+ *       500:
+ *         description: Integración OAuth de Google no configurada.
+ */
+
+/**
+ * @swagger
+ * /auth/google/login:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Inicia sesión con Google mediante idToken
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/GoogleLoginInput'
+ *     responses:
+ *       200:
+ *         description: Inicio de sesión con Google exitoso.
+ *       401:
+ *         description: Token de Google inválido o no verificado.
+ *       409:
+ *         description: El correo ya existe como cuenta local.
+ *       500:
+ *         description: Integración de Google no configurada en servidor.
  */
 
 /**

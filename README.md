@@ -39,6 +39,9 @@ Antes de ejecutar el proyecto crea un archivo `.env` en la raíz con, al menos, 
 | `SMTP_PASSWORD` | Contraseña SMTP | `""` |
 | `SMTP_FROM_NAME` | Nombre del remitente en los correos | `""` |
 | `SMTP_FROM_EMAIL` | Correo remitente | `""` |
+| `GOOGLE_CLIENT_ID` | Client ID OAuth2 de Google | `""` |
+| `GOOGLE_CLIENT_SECRET` | Client Secret OAuth2 de Google (callback flow) | `""` |
+| `GOOGLE_CALLBACK_URL` | URL de callback registrada en Google Console | `""` |
 | `SWAGGER_USER` | Usuario básico para acceder a Swagger | `admin` |
 | `SWAGGER_PASSWORD` | Contraseña básica para Swagger | `password123` |
 
@@ -64,6 +67,36 @@ npm start
 ```
 
 El comando `npm run build` genera la carpeta `dist/` con el código JavaScript compilado. `npm start` levanta el servidor utilizando esos archivos compilados.
+
+## Login con Google
+
+Puedes usar cualquiera de estos flujos:
+
+- Redirect OAuth clásico:
+  - `GET /auth/google` inicia la autorización en Google.
+  - `GET /auth/google/callback` recibe `code`, valida identidad y devuelve JWT de IDEAMEX.
+  - Requiere `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `GOOGLE_CALLBACK_URL`.
+- Token directo (SPA/mobile):
+  - `POST /auth/google/login` con `idToken`.
+  - Requiere `GOOGLE_CLIENT_ID`.
+
+Para `POST /auth/google/login`, el payload es:
+
+```json
+{
+  "idToken": "TOKEN_ID_DE_GOOGLE"
+}
+```
+
+Ejemplo con `curl`:
+
+```bash
+curl -X POST http://localhost:3000/auth/google/login \
+  -H "Content-Type: application/json" \
+  -d '{"idToken":"TOKEN_ID_DE_GOOGLE"}'
+```
+
+Si el token es válido para tu `GOOGLE_CLIENT_ID`, la API responderá con el JWT interno de IDEAMEX.
 
 ## Scripts disponibles
 
