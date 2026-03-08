@@ -24,34 +24,43 @@ export const projectStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const authHeader = req.header('Authorization');
     const projectName = req.body.projectName;
+    const withStatus = (message: string, statusCode: number): Error => {
+      const err = new Error(message) as Error & { statusCode?: number };
+      err.statusCode = statusCode;
+      return err;
+    };
 
     if (!authHeader?.startsWith('Bearer ')) {
-      return cb(new Error('Missing Bearer token'), '');
+      return cb(withStatus('Missing Bearer token', 401), '');
     }
 
     const token = authHeader.split(' ')[1];
+    const secret = process.env.JWT_SECRET || 'defaultsecret';
+    let decoded: jwt.JwtPayload;
 
     try {
-      const secret = process.env.JWT_SECRET || 'defaultsecret';
-      const decoded = jwt.verify(token, secret) as jwt.JwtPayload;
+      decoded = jwt.verify(token, secret) as jwt.JwtPayload;
+    } catch (err) {
+      console.error('[MULTER] Invalid token:', err);
+      return cb(withStatus('Invalid or expired token', 401), '');
+    }
 
-      const email = decoded.email;
-      if (!email || typeof projectName !== 'string') {
-        return cb(new Error('Missing user or projectName'), '');
-      }
+    const email = decoded.email;
+    if (!email || typeof projectName !== 'string') {
+      return cb(withStatus('Missing user or projectName', 400), '');
+    }
 
-      const emailPrefix = sanitizeEmailPrefix(email.split('@')[0]);
-      const projectFolder = sanitizeName(projectName);
+    const emailPrefix = sanitizeEmailPrefix(email.split('@')[0]);
+    const projectFolder = sanitizeName(projectName);
+    const basePath = process.env.PROJECTS_BASE_PATH || path.resolve(process.cwd(), 'projects');
+    const fullFolder = path.join(basePath, emailPrefix, projectFolder);
 
-      // Ruta base configurable según entorno (.env)
-      const basePath = process.env.PROJECTS_BASE_PATH || path.resolve(process.cwd(), 'projects');
-      const fullFolder = path.join(basePath, emailPrefix, projectFolder);
-
+    try {
       ensureDirectory(fullFolder);
       cb(null, fullFolder);
     } catch (err) {
-      console.error('[MULTER] Error decoding token:', err);
-      return cb(new Error('Invalid or expired token'), '');
+      console.error('[MULTER] Storage path error:', { basePath, fullFolder, err });
+      return cb(withStatus('Storage path is not writable. Verify PROJECTS_BASE_PATH permissions.', 500), '');
     }
   },
 
