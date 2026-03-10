@@ -23,6 +23,7 @@ const allowedExtensions = ['.csv', '.tsv', '.txt'];
  * @returns True si es válida, false si no.
  */
 export const isValidExtension = (filename: string): boolean => {
+  // Normaliza a minúsculas para comparación determinística.
   const ext = path.extname(filename).toLowerCase();
   return allowedExtensions.includes(ext);
 };
@@ -45,6 +46,7 @@ export const sanitizeName = (name: string): string => {
  * Sanitiza correos para usarlos como nombres de carpeta, permitiendo puntos.
  */
 export const sanitizeEmailPrefix = (email: string): string => {
+  // Permite punto/guión para no perder legibilidad en nombres de carpeta.
   const prefix = email.split('@')[0];
   return prefix.replace(/[^a-zA-Z0-9._-]/g, '');
 };
@@ -56,6 +58,7 @@ export const sanitizeEmailPrefix = (email: string): string => {
  */
 export const ensureDirectory = (dir: string): void => {
   if (!fs.existsSync(dir)) {
+    // `recursive` crea toda la jerarquía faltante de una sola vez.
     fs.mkdirSync(dir, { recursive: true });
   }
 };
@@ -75,6 +78,7 @@ export const buildProjectPath = (
   projectName: string,
   filename: string
 ): { relativePath: string; fullPath: string } => {
+  // Se sanitiza para evitar rutas peligrosas y mantener estructura homogénea.
   const safeUsername = sanitizeName(username);
   const safeProject = sanitizeName(projectName);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');

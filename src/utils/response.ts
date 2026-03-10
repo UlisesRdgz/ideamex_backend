@@ -26,6 +26,7 @@ export const sendSuccessResponse = (
   data: unknown = null,
   statusCode = 200
 ): void => {
+  // Envelope uniforme para simplificar manejo de respuestas en frontend/Postman.
   res.status(statusCode).json({
     status: 'success',
     message,
@@ -48,6 +49,7 @@ export const sendErrorResponse = (
   details: unknown = null,
   statusCode = 400
 ): void => {
+  // Envelope uniforme para errores, con `details` opcional para validaciones.
   res.status(statusCode).json({
     status: 'error',
     message,

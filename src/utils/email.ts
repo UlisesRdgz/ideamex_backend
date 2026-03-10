@@ -21,6 +21,7 @@ import { emailTransporter } from '../config/email';
  * @throws Error si ocurre un problema al enviar el correo.
  */
 export const sendActivationEmail = async (email: string, token: string): Promise<void> => {
+  // Link orientado al frontend público, no al endpoint API interno.
   const activationLink = `https://iauusmb.ibt.unam.mx/ideamex2/auth/activate?token=${token}`;
 
   await emailTransporter.sendMail({
@@ -41,6 +42,7 @@ export const sendActivationEmail = async (email: string, token: string): Promise
  * @throws Error si ocurre un problema al enviar el correo.
  */
 export const sendPasswordResetEmail = async (email: string, token: string): Promise<void> => {
+  // Token via query param para que el frontend renderice formulario de cambio de contraseña.
   const resetLink = `https://iauusmb.ibt.unam.mx/ideamex2/auth/reset-password?token=${token}`;
 
   await emailTransporter.sendMail({
@@ -62,6 +64,7 @@ export const sendPasswordResetEmail = async (email: string, token: string): Prom
  * @returns HTML en string listo para enviar por correo.
  */
 function getActivationEmailHTML(activationLink: string): string {
+  // Plantilla inline para evitar dependencias de assets externos en el backend.
   return `<!DOCTYPE html>
 <html>
 <head>

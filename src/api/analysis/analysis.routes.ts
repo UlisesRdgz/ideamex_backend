@@ -24,6 +24,7 @@ import { validateRequest, validateRunAnalysis } from '../../middlewares/validati
 
 const router = Router();
 
+// Flujo de proyectos: alta de archivo, consulta y eliminación.
 /**
  * @route POST /analysis/upload
  * @desc Sube un archivo y registra un nuevo proyecto del usuario autenticado
@@ -58,6 +59,7 @@ router.delete(
   handleDeleteProject
 );
 
+// Flujo de ejecución: valida contrato, bloquea proyecto y arranca análisis en background.
 /**
  * @route POST /analysis/project/:projectId/run
  * @desc Inicia la corrida de análisis para un proyecto y lo bloquea

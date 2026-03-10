@@ -23,6 +23,7 @@ import { User } from '../../models/User';
 export const createUser = async (
   user: Omit<User, 'id_user' | 'created_at' | 'updated_at' | 'last_session'>
 ): Promise<User> => {
+  // Inserta usuario local o social según `auth_provider`.
   const query = `
     INSERT INTO users (email, username, password, activation, token, token_expiration, password_request, google_id, auth_provider)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -30,6 +31,7 @@ export const createUser = async (
   const conn = await pool.getConnection();
   let result: { insertId: number };
   try {
+    // El orden de valores debe corresponder exactamente al INSERT.
     result = await conn.query(query, [
       user.email,
       user.username,
@@ -65,6 +67,7 @@ export const createUser = async (
 export const findUserByEmail = async (email: string): Promise<User | null> => {
   const conn = await pool.getConnection();
   try {
+    // `email` es único, por lo que se espera a lo sumo una fila.
     const rows = await conn.query('SELECT * FROM users WHERE email = ?', [email]);
     return rows[0] || null;
   } finally {
@@ -80,6 +83,7 @@ export const findUserByEmail = async (email: string): Promise<User | null> => {
  */
 export const findUserByToken = async (token: string): Promise<User | null> => {
   const query = `SELECT * FROM users WHERE token = ? AND token_expiration > NOW()`;
+  // Filtra por vigencia para evitar activar/restablecer con tokens expirados.
   const [row]: any = await pool.query(query, [token]);
   return row || null;
 };
@@ -99,6 +103,7 @@ export const activateUserAccount = async (id_user: number): Promise<void> => {
         token_expiration = NULL
     WHERE id_user = ?
   `;
+  // Limpia token de activación para impedir reutilización.
   await pool.query(query, [id_user]);
 };
 
@@ -116,6 +121,7 @@ export const updateUserResetToken = async (
   token: string,
   tokenExpiration: Date
 ): Promise<void> => {
+  // Guarda token temporal y fecha de expiración para recuperación de contraseña.
   const query = `UPDATE users SET token = ?, token_expiration = ? WHERE id_user = ?`;
   await pool.query(query, [token, tokenExpiration, userId]);
 };
@@ -130,6 +136,7 @@ export const updateUserResetToken = async (
  */
 export const findUserByResetToken = async (token: string): Promise<User | null> => {
   const query = `SELECT * FROM users WHERE token = ? AND token_expiration > NOW()`;
+  // Reutiliza patrón de token vigente para flujo de reset.
   const [row]: any = await pool.query(query, [token]);
   return row || null;
 };
@@ -151,6 +158,7 @@ export const updateUserPassword = async (
     SET password = ?, token = NULL, token_expiration = NULL 
     WHERE id_user = ?
   `;
+  // Actualiza hash y revoca token de reset en la misma operación.
   await pool.query(query, [hashedPassword, userId]);
 };
 
@@ -169,6 +177,7 @@ export const findOrCreateUser = async (params: {
 }): Promise<User> => {
   const conn = await pool.getConnection();
   try {
+    // Busca por email o `google_id` para enlazar identidad de forma segura.
     const [existing]: any = await conn.query(
       'SELECT * FROM users WHERE email = ? OR google_id = ?',
       [params.email, params.googleId]
@@ -176,10 +185,12 @@ export const findOrCreateUser = async (params: {
 
     if (existing) {
       if (existing.auth_provider === 'local') {
+        // Evita takeover de cuentas locales con mismo email desde Google.
         throw new Error('LOCAL_ACCOUNT_EXISTS');
       }
 
       if (!existing.google_id) {
+        // Caso legacy: cuenta Google sin `google_id`, se corrige y activa.
         await conn.query(
           `UPDATE users
            SET google_id = ?, activation = 1, token = NULL, token_expiration = NULL
@@ -199,6 +210,7 @@ export const findOrCreateUser = async (params: {
       return existing;
     }
 
+    // Alta automática de usuario social si no existía previamente.
     const result = await conn.query(
       `INSERT INTO users (email, username, password, activation, auth_provider, google_id, password_request)
        VALUES (?, ?, NULL, 1, 'google', ?, 0)`,
@@ -236,6 +248,7 @@ export const findOrCreateUser = async (params: {
 export const findUserById = async (id_user: number): Promise<User | null> => {
   const conn = await pool.getConnection();
   try {
+    // Útil para validaciones de ownership y perfiles.
     const rows = await conn.query('SELECT * FROM users WHERE id_user = ?', [id_user]);
     return rows[0] || null;
   } finally {

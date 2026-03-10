@@ -18,6 +18,7 @@ dotenv.config();
  * Permite reutilizar conexiones para optimizar el rendimiento.
  */
 export const pool = mariadb.createPool({
+    // En Docker, DB_HOST suele ser el nombre del servicio (ej. `db`).
     host: process.env.DB_HOST || '127.0.0.1',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
@@ -34,6 +35,7 @@ export const pool = mariadb.createPool({
  */
 export const checkDatabaseConnection = async (): Promise<void> => {
     try {
+        // Abre y libera una conexión real para verificar credenciales/red.
         const conn = await pool.getConnection();
         console.log('[DB] Conexión exitosa a MariaDB');
         conn.release();

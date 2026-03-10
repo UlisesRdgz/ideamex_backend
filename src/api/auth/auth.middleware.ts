@@ -37,6 +37,7 @@ export const requireUser: RequestHandler = (req, res, next) => {
 
   try {
     const secret = process.env.JWT_SECRET || 'defaultsecret';
+    // Verifica firma y expiración del JWT de sesión.
     const decoded = jwt.verify(token, secret) as JwtPayload;
 
     if (
@@ -48,7 +49,7 @@ export const requireUser: RequestHandler = (req, res, next) => {
       return;
     }
 
-    // Establece el usuario autenticado en la request
+    // Expone identidad mínima para capas siguientes (controllers/services).
     req.user = {
       id_user: decoded.id_user,
       username: decoded.username,
@@ -79,6 +80,7 @@ export const checkEmailExists = async (
   const { email } = req.body;
 
   try {
+    // Previene duplicados de email antes del INSERT.
     const existingUser = await findUserByEmail(email);
     if (existingUser) {
       sendErrorResponse(res, 'El correo ya está en uso', null, 400);

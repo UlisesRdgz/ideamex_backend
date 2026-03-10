@@ -22,6 +22,7 @@ dotenv.config();
 export const emailTransporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT || '587', 10),
+    // `secure=true` solo para SMTPS directo (puerto 465).
     secure: parseInt(process.env.SMTP_PORT || '587') === 465, // true para puerto 465
     auth: {
         user: process.env.SMTP_USER || '',

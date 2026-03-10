@@ -14,5 +14,6 @@ import { randomBytes } from 'crypto';
  * Genera un token aleatorio de 32 bytes en formato hexadecimal.
  */
 export const generateToken = (): string => {
+  // 32 bytes => 64 caracteres hex, suficiente entropía para enlaces temporales.
   return randomBytes(32).toString('hex');
 };

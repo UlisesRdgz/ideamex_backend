@@ -18,12 +18,16 @@ import { isValidExtension, sanitizeName, ensureDirectory, sanitizeEmailPrefix } 
 
 /**
  * Configuración del almacenamiento de archivos para proyectos.
- * Crea carpetas por usuario y proyecto usando el token JWT y `req.body.projectName`.
+ * Crea carpetas por usuario y proyecto usando el token JWT y `req.body.projectName|title`.
  */
 export const projectStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const authHeader = req.header('Authorization');
-    const projectName = req.body.projectName;
+    const projectNameRaw =
+      typeof req.body?.projectName === 'string' && req.body.projectName.trim().length > 0
+        ? req.body.projectName
+        : req.body?.title;
+    const projectName = typeof projectNameRaw === 'string' ? projectNameRaw.trim() : '';
     const withStatus = (message: string, statusCode: number): Error => {
       const err = new Error(message) as Error & { statusCode?: number };
       err.statusCode = statusCode;
@@ -46,16 +50,18 @@ export const projectStorage = multer.diskStorage({
     }
 
     const email = decoded.email;
-    if (!email || typeof projectName !== 'string') {
-      return cb(withStatus('Missing user or projectName', 400), '');
+    if (!email || !projectName) {
+      return cb(withStatus('Missing user or projectName/title', 400), '');
     }
 
+    // Reproduce la misma sanitización usada por controladores para evitar rutas inconsistentes.
     const emailPrefix = sanitizeEmailPrefix(email.split('@')[0]);
     const projectFolder = sanitizeName(projectName);
     const basePath = process.env.PROJECTS_BASE_PATH || path.resolve(process.cwd(), 'projects');
     const fullFolder = path.join(basePath, emailPrefix, projectFolder);
 
     try {
+      // Crea recursivamente la carpeta de destino si no existe.
       ensureDirectory(fullFolder);
       cb(null, fullFolder);
     } catch (err) {
@@ -65,6 +71,7 @@ export const projectStorage = multer.diskStorage({
   },
 
   filename: (req, file, cb) => {
+    // Prefijo temporal para evitar colisiones de nombres en subidas concurrentes.
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const cleanName = file.originalname.replace(/\s+/g, '_');
     cb(null, `${timestamp}_${cleanName}`);
@@ -78,6 +85,7 @@ export const projectStorage = multer.diskStorage({
 export const uploadProject = multer({
   storage: projectStorage,
   fileFilter: (req, file, cb) => {
+    // Solo se aceptan extensiones soportadas por el pipeline de análisis.
     if (!isValidExtension(file.originalname)) {
       return cb(new Error('Invalid file type. Only .csv, .tsv, and .txt are allowed.'));
     }

@@ -28,11 +28,13 @@ export const submitContactForm = async (req: Request, res: Response): Promise<vo
   const { fullName, email, phone, subject, message } = req.body;
 
   try {
+    // Validación defensiva adicional (además de express-validator en rutas).
     if (!fullName || !email || !phone || !subject || !message) {
       sendErrorResponse(res, 'Todos los campos son obligatorios', null, 400);
       return;
     }
 
+    // Mapea payload público (camelCase) al contrato de persistencia (snake_case).
     const contactData: Omit<ContactRequest, 'id_contact_request' | 'created_at'> = {
       full_name: fullName,
       email,
@@ -41,6 +43,7 @@ export const submitContactForm = async (req: Request, res: Response): Promise<vo
       message,
     };
 
+    // Primero persiste en BD y luego notifica por correo al equipo.
     await saveContactRequest(contactData);
     await notifyAdminByEmail(contactData);
 
