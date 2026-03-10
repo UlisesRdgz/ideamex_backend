@@ -26,6 +26,7 @@ export const saveContactRequest = async (
   request: Omit<ContactRequest, 'id_contact_request' | 'created_at'>
 ): Promise<void> => {
   const conn = await pool.getConnection();
+  // Inserta solicitud de contacto para trazabilidad y seguimiento interno.
   const query = `
     INSERT INTO contact_requests (full_name, email, phone, subject, message)
     VALUES (?, ?, ?, ?, ?)
@@ -53,6 +54,7 @@ export const saveContactRequest = async (
 export const notifyAdminByEmail = async (
   request: Omit<ContactRequest, 'id_contact_request' | 'created_at'>
 ): Promise<void> => {
+  // Escapa todos los campos para evitar inyección HTML en el correo.
   await emailTransporter.sendMail({
     from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
     to: 'ideamex.unam@gmail.com',

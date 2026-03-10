@@ -36,6 +36,7 @@ import {
 
 const router = Router();
 
+// Flujo local: registro -> activación -> login.
 /**
  * @route POST /api/v1/ideamex/auth/register
  * @desc Registra un nuevo usuario local
@@ -68,6 +69,7 @@ router.post(
   loginUser
 );
 
+// Flujo OAuth Google: start -> callback (y soporte idToken legacy).
 /**
  * @route GET /api/v1/ideamex/auth/google
  * @desc Inicia OAuth2 con Google (redirección)
@@ -94,6 +96,7 @@ router.post(
   loginWithGoogle
 );
 
+// Flujo de recuperación de contraseña para cuentas locales.
 /**
  * @route POST /api/v1/ideamex/auth/request-password-reset
  * @desc Solicita restablecimiento de contraseña por correo

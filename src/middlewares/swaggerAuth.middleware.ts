@@ -36,10 +36,12 @@ export const swaggerAuth = (req: Request, res: Response, next: NextFunction): vo
   }
 
   try {
+    // Decodifica "Basic base64(user:pass)" y separa ambas credenciales.
     const base64Credentials = authHeader.split(' ')[1];
     const decodedCredentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
     const [inputUsername, inputPassword] = decodedCredentials.split(':');
 
+    // Autoriza únicamente cuando ambas credenciales coinciden.
     if (inputUsername === username && inputPassword === password) {
       next();
     } else {

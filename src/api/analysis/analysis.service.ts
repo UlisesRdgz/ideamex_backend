@@ -10,30 +10,101 @@
 
 import { pool } from '../../config/db';
 
+/**
+ * Parámetros normalizados que el backend envía al motor de análisis en R.
+ * Este contrato evita depender directamente del body HTTP en capas internas.
+ */
 export interface AnalysisRunParams {
+  /**
+   * Métodos seleccionados en formato compacto (ejemplo: "1236").
+   */
   methods: string;
+  /**
+   * Umbral de log fold-change.
+   */
   logfc: number;
+  /**
+   * Umbral CPM (counts per million).
+   */
   cpm: number;
+  /**
+   * Umbral de p-adjusted para significancia estadística.
+   */
   padjust: number;
+  /**
+   * Lista opcional de lotes separada por comas para corrección batch.
+   */
   batch: string | null;
+  /**
+   * Indica si el pipeline debe generar archivo ZIP de resultados.
+   */
   generateZip: boolean;
+  /**
+   * Indica si deben incluirse tablas/gráficos top en la salida.
+   */
   top: boolean;
 }
 
+/**
+ * Representa una fila completa de la tabla `projects`.
+ * Se usa en lecturas detalladas de estado de corrida.
+ */
 export interface ProjectRecord {
+  /**
+   * Identificador interno del proyecto.
+   */
   id_project: number;
+  /**
+   * Propietario del proyecto (FK a users.id_user).
+   */
   user_id: number;
+  /**
+   * Nombre visible del proyecto.
+   */
   name: string;
+  /**
+   * Descripción opcional proporcionada por el usuario.
+   */
   description: string | null;
+  /**
+   * Estado lógico del proyecto dentro del flujo de análisis.
+   */
   status: 'active' | 'inactive' | 'completed';
+  /**
+   * Ruta relativa del archivo principal del proyecto.
+   */
   path: string;
+  /**
+   * Marca de bloqueo para evitar corridas concurrentes.
+   */
   locked_at: Date | null;
+  /**
+   * Fecha/hora de inicio de ejecución.
+   */
   run_started_at: Date | null;
+  /**
+   * Fecha/hora de finalización de ejecución.
+   */
   run_finished_at: Date | null;
+  /**
+   * Snapshot serializado de parámetros de ejecución.
+   */
   run_params_json: string | null;
+  /**
+   * Ruta relativa a carpeta de resultados.
+   */
   result_path: string | null;
+  /**
+   * Mensaje de error persistido cuando la corrida falla.
+   */
   run_error: string | null;
+  /**
+   * Marca temporal de creación del registro.
+   */
   created_at: Date;
+  /**
+   * Marca temporal de última actualización del registro.
+   */
   updated_at: Date;
 }
 
@@ -56,6 +127,7 @@ export const createProject = async (
   status: 'active' | 'inactive' | 'completed',
   path: string
 ): Promise<number> => {
+  // Inserta metadatos iniciales del proyecto y archivo cargado.
   const query = `
     INSERT INTO projects (user_id, name, description, status, path)
     VALUES (?, ?, ?, ?, ?)
@@ -88,6 +160,7 @@ export const projectExists = async (
 ): Promise<boolean> => {
   const conn = await pool.getConnection();
   try {
+    // Consulta mínima para validar duplicado por la llave única (user_id, name).
     const [row]: any = await conn.query(
       'SELECT 1 FROM projects WHERE user_id = ? AND name = ? LIMIT 1',
       [id_user, name]
@@ -127,6 +200,7 @@ export const getProjectsByUser = async (id_user: number): Promise<any[]> => {
 
   const conn = await pool.getConnection();
   try {
+    // Devuelve resumen ordenado por creación para la vista principal del usuario.
     const rows = await conn.query(query, [id_user]);
     return rows;
   } finally {
@@ -148,6 +222,7 @@ export const deleteProjectById = async (
 ): Promise<void> => {
   const conn = await pool.getConnection();
   try {
+    // Borra solo si el proyecto pertenece al usuario autenticado.
     const result = await conn.query(
       `DELETE FROM projects WHERE id_project = ? AND user_id = ?`,
       [id_project, id_user]
@@ -195,6 +270,7 @@ export const getProjectById = async (
 ): Promise<ProjectRecord | null> => {
   const conn = await pool.getConnection();
   try {
+    // Lee estado completo del proyecto para operaciones sensibles (run/delete).
     const rows = await conn.query(
       `
       SELECT
@@ -237,6 +313,7 @@ export const lockProjectForRun = async (
 ): Promise<boolean> => {
   const conn = await pool.getConnection();
   try {
+    // Bloquea atómicamente: si ya está bloqueado, affectedRows será 0.
     const result = await conn.query(
       `
       UPDATE projects
@@ -268,6 +345,7 @@ export const markProjectRunCompleted = async (
 ): Promise<void> => {
   const conn = await pool.getConnection();
   try {
+    // Persiste cierre exitoso y limpia mensaje de error previo.
     await conn.query(
       `
       UPDATE projects
@@ -295,6 +373,7 @@ export const markProjectRunFailed = async (
 ): Promise<void> => {
   const conn = await pool.getConnection();
   try {
+    // Persiste estado fallido sin desbloquear `locked_at` para mantener trazabilidad.
     await conn.query(
       `
       UPDATE projects

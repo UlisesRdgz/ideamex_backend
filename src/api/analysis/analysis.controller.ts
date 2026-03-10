@@ -28,30 +28,48 @@ import {
   markProjectRunFailed,
 } from './analysis.service';
 import { sendErrorResponse, sendSuccessResponse } from '../../utils/response';
-
-const DEFAULT_RUN_PARAMS: AnalysisRunParams = {
-  methods: '123456',
-  logfc: 1,
-  cpm: 1,
-  padjust: 0.01,
-  batch: null,
-  generateZip: true,
-  top: true,
-};
+import {
+  AnalysisRunPayloadLike,
+  FrontAnalysisParametersLike,
+  FrontMethodLike,
+  FrontMethodsSelectionLike,
+  FrontSampleLike,
+  UploadProjectPayloadLike,
+} from './analysis.types';
 
 const RUN_LOG_FILE = 'RunSummary.log';
 const SAMPLE_NAME_PATTERN = /^.+_[a-zA-Z0-9]+$/;
+const METHOD_DIGIT_BY_NAME: Record<string, string> = {
+  edger: '1',
+  limma: '2',
+  noiseq: '3',
+  deseq2: '4',
+  dataanalysis: '5',
+  integrationresults: '6',
+};
 
+/**
+ * Resuelve la ruta base de almacenamiento de proyectos desde entorno.
+ */
 const getProjectsBasePath = (): string => {
   return process.env.PROJECTS_BASE_PATH || path.resolve(process.cwd(), 'projects');
 };
 
+/**
+ * Convierte boolean de JavaScript al literal esperado por scripts de R.
+ */
 const toRBoolean = (value: boolean): string => (value ? 'TRUE' : 'FALSE');
 
+/**
+ * Limpia mensajes de error para hacerlos seguros y compactos antes de persistirlos.
+ */
 const sanitizeErrorMessage = (rawMessage: string): string => {
   return rawMessage.replace(/\s+/g, ' ').trim().slice(0, 2000);
 };
 
+/**
+ * Detecta errores de duplicado de llave única devueltos por MariaDB.
+ */
 const isDuplicateEntryError = (error: unknown): boolean => {
   if (!error || typeof error !== 'object') {
     return false;
@@ -61,9 +79,13 @@ const isDuplicateEntryError = (error: unknown): boolean => {
   return err.code === 'ER_DUP_ENTRY' || err.errno === 1062;
 };
 
-const parseBooleanField = (value: unknown, fallback: boolean): boolean | null => {
+/**
+ * Convierte valores flexibles (`true`, `false`, `1`, `0`) a boolean estricto.
+ * Devuelve `null` cuando el valor no puede interpretarse.
+ */
+const parseBooleanField = (value: unknown): boolean | null => {
   if (value === undefined || value === null || value === '') {
-    return fallback;
+    return null;
   }
 
   if (typeof value === 'boolean') {
@@ -83,6 +105,145 @@ const parseBooleanField = (value: unknown, fallback: boolean): boolean | null =>
   return null;
 };
 
+const normalizeMethodName = (name: string): string => {
+  // Normaliza para permitir equivalencias como "edge-r", "edgeR" o "EDGE R".
+  return name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+};
+
+const buildMethodsFromMethodArray = (methods: FrontMethodLike[]): string => {
+  const selectedDigits: string[] = [];
+
+  for (const method of methods) {
+    if (!method || typeof method !== 'object') {
+      continue;
+    }
+
+    const name = typeof method.name === 'string' ? method.name : null;
+    if (!name) {
+      continue;
+    }
+
+    if (method.isSelected !== undefined && typeof method.isSelected === 'boolean' && !method.isSelected) {
+      continue;
+    }
+
+    const key = normalizeMethodName(name);
+    const digit = METHOD_DIGIT_BY_NAME[key];
+    if (digit) {
+      selectedDigits.push(digit);
+    }
+  }
+
+  // Deduplica para evitar repetir métodos cuando la UI manda duplicados.
+  return Array.from(new Set(selectedDigits)).join('');
+};
+
+const buildMethodsFromSelectionObject = (selection: FrontMethodsSelectionLike): string => {
+  const digits: string[] = [];
+
+  // Mapea flags booleanos del frontend al formato compacto que consume el script R.
+  if (selection.edgeR === true) digits.push('1');
+  if (selection.limma === true) digits.push('2');
+  if (selection.noiseq === true) digits.push('3');
+  if (selection.deseq2 === true) digits.push('4');
+  if (selection.dataAnalysis === true) digits.push('5');
+  if (selection.integrationResults === true) digits.push('6');
+
+  return digits.join('');
+};
+
+const buildBatchFromSamples = (samples: FrontSampleLike[]): string | null => {
+  const values: string[] = [];
+
+  for (const sample of samples) {
+    if (!sample || typeof sample !== 'object') {
+      return null;
+    }
+
+    // Si una muestra no trae `batch`, no se puede construir vector consistente.
+    const batchValue = sample.batch;
+    if (batchValue === undefined || batchValue === null || batchValue === '') {
+      return null;
+    }
+
+    values.push(String(batchValue).trim());
+  }
+
+  if (values.length === 0 || values.some((value) => value.length === 0)) {
+    return null;
+  }
+
+  return values.join(',');
+};
+
+/**
+ * Adapta payloads del frontend (ProjectRequest/Project) al formato legacy del backend.
+ * Soporta ambos estilos para mantener compatibilidad en clientes existentes.
+ */
+const adaptRunPayloadFromFrontend = (
+  payload: Record<string, unknown>
+): AnalysisRunPayloadLike => {
+  const body = payload as AnalysisRunPayloadLike;
+  const adapted: AnalysisRunPayloadLike = {
+    methods: typeof body.methods === 'string' ? body.methods : undefined,
+    logfc: body.logfc,
+    cpm: body.cpm,
+    padjust: body.padjust,
+    batch: body.batch,
+    generateZip: body.generateZip,
+    top: body.top,
+  };
+
+  // Prioridad 1: arreglo de métodos detallado (ProjectRequest.methods).
+  if ((!adapted.methods || adapted.methods === '') && Array.isArray(body.methods)) {
+    adapted.methods = buildMethodsFromMethodArray(body.methods as FrontMethodLike[]);
+  }
+
+  // Prioridad 2: selección booleana (Project.selectedMethods).
+  if (
+    (!adapted.methods || adapted.methods === '') &&
+    body.selectedMethods &&
+    typeof body.selectedMethods === 'object'
+  ) {
+    adapted.methods = buildMethodsFromSelectionObject(body.selectedMethods as FrontMethodsSelectionLike);
+  }
+
+  if (body.parameters && typeof body.parameters === 'object') {
+    const parameters = body.parameters as FrontAnalysisParametersLike;
+
+    // Mapea nombres de contrato frontend a nombres internos legacy.
+    if (adapted.padjust === undefined) {
+      adapted.padjust = parameters.fdr ?? parameters.padjust;
+    }
+    if (adapted.logfc === undefined) {
+      adapted.logfc = parameters.logFC ?? parameters.logfc;
+    }
+    if (adapted.cpm === undefined) {
+      adapted.cpm = parameters.cpm;
+    }
+    if (adapted.top === undefined) {
+      adapted.top = parameters.top;
+    }
+    if (adapted.generateZip === undefined) {
+      adapted.generateZip = parameters.generateZip;
+    }
+  }
+
+  // Si el cliente no mandó `batch` directo, se deriva desde `samples[].batch`.
+  if (
+    (adapted.batch === undefined || adapted.batch === null || adapted.batch === '') &&
+    Array.isArray(body.samples)
+  ) {
+    adapted.batch = buildBatchFromSamples(body.samples as FrontSampleLike[]);
+  }
+
+  return adapted;
+};
+
+/**
+ * Construye ruta absoluta segura desde una ruta relativa de proyecto.
+ * Rechaza intentos de path traversal fuera de `basePath`.
+ */
 const resolveProjectAbsolutePath = (basePath: string, projectRelativePath: string): string | null => {
   if (!projectRelativePath || projectRelativePath.trim().length === 0) {
     return null;
@@ -101,6 +262,9 @@ const resolveProjectAbsolutePath = (basePath: string, projectRelativePath: strin
   return absolutePath;
 };
 
+/**
+ * Detecta el separador soportado en encabezados de tabla de conteo.
+ */
 const detectCountTableSeparator = (headerLine: string): ',' | '\t' | null => {
   if (headerLine.includes(',')) {
     return ',';
@@ -113,10 +277,17 @@ const detectCountTableSeparator = (headerLine: string): ',' | '\t' | null => {
   return null;
 };
 
+/**
+ * Lee solo la primera línea del archivo de conteos para extraer metadatos básicos:
+ * - nombres de muestra (columnas),
+ * - nombres de condición (prefijo antes del último `_`).
+ */
 const parseCountTableHeader = (
   inputPath: string
 ): { sampleNames: string[]; conditionNames: string[] } | null => {
+  // Se lee únicamente el encabezado para validar estructura sin cargar toda la tabla en memoria.
   const content = fs.readFileSync(inputPath, 'utf-8');
+  // Remueve posible BOM UTF-8 para no romper parseo del primer encabezado.
   const firstLine = content.split(/\r?\n/, 1)[0]?.replace(/^\uFEFF/, '') || '';
 
   if (!firstLine.trim()) {
@@ -133,6 +304,7 @@ const parseCountTableHeader = (
     return null;
   }
 
+  // La primera columna corresponde al identificador de gen/transcrito, no a muestra.
   const sampleNames = columns.slice(1).filter((value) => value.length > 0);
   if (sampleNames.length === 0) {
     return null;
@@ -142,6 +314,12 @@ const parseCountTableHeader = (
   return { sampleNames, conditionNames };
 };
 
+/**
+ * Valida reglas mínimas de consistencia entre:
+ * - formato de nombres de muestra,
+ * - métodos de análisis seleccionados,
+ * - longitud del vector batch.
+ */
 const validateSampleNamesAndBatch = (
   inputPath: string,
   runParams: AnalysisRunParams
@@ -163,6 +341,7 @@ const validateSampleNamesAndBatch = (
     };
   }
 
+  // Requisito mínimo para cualquier comparación con sentido estadístico.
   if (metadata.sampleNames.length < 2) {
     return {
       ok: false,
@@ -170,6 +349,7 @@ const validateSampleNamesAndBatch = (
     };
   }
 
+  // Enforce del patrón `condition_sample` para que el pipeline deduzca grupos correctamente.
   const invalidSampleNames = metadata.sampleNames.filter((sample) => !SAMPLE_NAME_PATTERN.test(sample));
   if (invalidSampleNames.length > 0) {
     return {
@@ -179,6 +359,7 @@ const validateSampleNamesAndBatch = (
     };
   }
 
+  // Si se usan métodos DE (1-4), debe haber al menos dos condiciones comparables.
   const hasPairwiseMethods = /[1-4]/.test(runParams.methods);
   if (hasPairwiseMethods) {
     const uniqueConditions = new Set(metadata.conditionNames);
@@ -192,6 +373,7 @@ const validateSampleNamesAndBatch = (
   }
 
   if (runParams.batch !== null) {
+    // Cada muestra debe tener exactamente un valor de batch.
     const batchValues = runParams.batch.split(',').map((value) => value.trim());
     if (batchValues.length !== metadata.sampleNames.length) {
       return {
@@ -204,12 +386,17 @@ const validateSampleNamesAndBatch = (
   return { ok: true };
 };
 
+/**
+ * Intenta extraer `runStatus` (0..4) desde stdout del script.
+ * Se usa como fallback cuando el proceso termina sin error de sistema.
+ */
 const parseRunStatusFromStdout = (stdout: string): number | null => {
   const matches = stdout.match(/\b[0-4]\b/g);
   if (!matches || matches.length === 0) {
     return null;
   }
 
+  // Si hay múltiples coincidencias, se toma la última por ser el estado final emitido.
   const value = Number(matches[matches.length - 1]);
   if (!Number.isInteger(value)) {
     return null;
@@ -218,6 +405,9 @@ const parseRunStatusFromStdout = (stdout: string): number | null => {
   return value;
 };
 
+/**
+ * Traduce códigos de estado del script R a mensajes legibles para API/log.
+ */
 const getRunStatusMessage = (runStatus: number): string => {
   switch (runStatus) {
     case 0:
@@ -235,6 +425,9 @@ const getRunStatusMessage = (runStatus: number): string => {
   }
 };
 
+/**
+ * Normaliza líneas del log de R para facilitar búsqueda de patrones de error.
+ */
 const cleanRunLogLine = (line: string): string => {
   return line
     .trim()
@@ -243,6 +436,10 @@ const cleanRunLogLine = (line: string): string => {
     .trim();
 };
 
+/**
+ * Busca señales de falla dentro de `RunSummary.log` generado por el pipeline.
+ * Si detecta una línea crítica, devuelve un mensaje explicativo.
+ */
 const findFailureInRunSummaryLog = (outputDir: string): string | null => {
   const logPath = path.join(outputDir, RUN_LOG_FILE);
   if (!fs.existsSync(logPath)) {
@@ -252,6 +449,7 @@ const findFailureInRunSummaryLog = (outputDir: string): string | null => {
   const logContent = fs.readFileSync(logPath, 'utf-8');
   const lines = logContent.split(/\r?\n/).map(cleanRunLogLine).filter((line) => line.length > 0);
 
+  // Patrones que representan fallos funcionales del pipeline aunque el proceso haya terminado.
   const firstFailureLine = lines.find((line) => {
     return (
       /\bfailed\b/i.test(line) ||
@@ -270,18 +468,51 @@ const findFailureInRunSummaryLog = (outputDir: string): string | null => {
   return `RunSummary.log indicates failure: ${firstFailureLine}`;
 };
 
+/**
+ * Valida y normaliza payload de ejecución:
+ * - aplica defaults,
+ * - verifica rangos numéricos,
+ * - compacta métodos,
+ * - valida batch y flags booleanos.
+ */
 const normalizeRunParams = (
   payload: Record<string, unknown>
 ): { params: AnalysisRunParams | null; error?: string } => {
-  const methodsInput =
-    typeof payload.methods === 'string' && payload.methods.trim().length > 0
-      ? payload.methods.trim()
-      : DEFAULT_RUN_PARAMS.methods;
+  // Acepta payload nuevo del frontend y payload legacy ya soportado por el backend.
+  const adaptedPayload = adaptRunPayloadFromFrontend(payload);
+  const rawPayload = payload as AnalysisRunPayloadLike;
+  // Si el cliente intentó enviar métodos pero ninguno pudo mapearse, se rechaza explícitamente.
+  const methodsProvided =
+    typeof rawPayload.methods === 'string' ||
+    Array.isArray(rawPayload.methods) ||
+    rawPayload.selectedMethods !== undefined;
 
+  if (
+    methodsProvided &&
+    (typeof adaptedPayload.methods !== 'string' || adaptedPayload.methods.trim().length === 0)
+  ) {
+    return {
+      params: null,
+      error:
+        'No valid methods were mapped from payload. Verify methods[].name or selectedMethods fields.',
+    };
+  }
+
+  const methodsInput =
+    typeof adaptedPayload.methods === 'string' && adaptedPayload.methods.trim().length > 0
+      ? adaptedPayload.methods.trim()
+      : '';
+
+  if (!methodsInput) {
+    return { params: null, error: 'methods is required and cannot be empty' };
+  }
+
+  // Solo se permite el alfabeto de métodos conocido por el backend (1..6).
   if (!/^[1-6]+$/.test(methodsInput)) {
     return { params: null, error: 'methods must contain digits from 1 to 6 only' };
   }
 
+  // Elimina duplicados preservando orden de selección.
   const methods = Array.from(new Set(methodsInput.split(''))).join('');
   const hasAnyRunnableMethod = /[1-5]/.test(methods);
   if (!hasAnyRunnableMethod) {
@@ -292,9 +523,21 @@ const normalizeRunParams = (
     return { params: null, error: 'method 6 (integration) requires at least one DE method (1-4)' };
   }
 
-  const logfcRaw = payload.logfc ?? DEFAULT_RUN_PARAMS.logfc;
-  const cpmRaw = payload.cpm ?? DEFAULT_RUN_PARAMS.cpm;
-  const padjustRaw = payload.padjust ?? DEFAULT_RUN_PARAMS.padjust;
+  // Convierte entrada flexible a números y valida límites operativos.
+  const logfcRaw = adaptedPayload.logfc;
+  const cpmRaw = adaptedPayload.cpm;
+  const padjustRaw = adaptedPayload.padjust;
+
+  // Modo estricto: sin estos tres valores no se inicia ejecución.
+  if (logfcRaw === undefined || logfcRaw === null || String(logfcRaw).trim() === '') {
+    return { params: null, error: 'logfc is required' };
+  }
+  if (cpmRaw === undefined || cpmRaw === null || String(cpmRaw).trim() === '') {
+    return { params: null, error: 'cpm is required' };
+  }
+  if (padjustRaw === undefined || padjustRaw === null || String(padjustRaw).trim() === '') {
+    return { params: null, error: 'padjust is required' };
+  }
 
   const logfc = Number(logfcRaw);
   const cpm = Number(cpmRaw);
@@ -310,50 +553,66 @@ const normalizeRunParams = (
     return { params: null, error: 'padjust must be a number between 0 and 1' };
   }
 
-  let batchInput: string | null = DEFAULT_RUN_PARAMS.batch;
-  if (payload.batch !== undefined && payload.batch !== null && payload.batch !== '') {
-    if (typeof payload.batch !== 'string') {
-      return { params: null, error: 'batch must be a comma-separated numeric list' };
-    }
-
-    const normalizedBatch = payload.batch
-      .split(',')
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0)
-      .join(',');
-
-    if (normalizedBatch.length === 0) {
-      batchInput = null;
-    } else if (!/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?)*$/.test(normalizedBatch)) {
-      return { params: null, error: 'batch must be a comma-separated numeric list' };
-    } else {
-      batchInput = normalizedBatch;
-    }
+  if (
+    adaptedPayload.batch === undefined ||
+    adaptedPayload.batch === null ||
+    adaptedPayload.batch === ''
+  ) {
+    return { params: null, error: 'batch is required' };
   }
 
-  const generateZip = parseBooleanField(payload.generateZip, DEFAULT_RUN_PARAMS.generateZip);
+  if (typeof adaptedPayload.batch !== 'string') {
+    return { params: null, error: 'batch must be a comma-separated numeric list' };
+  }
+
+  const normalizedBatch = adaptedPayload.batch
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .join(',');
+
+  if (normalizedBatch.length === 0) {
+    return { params: null, error: 'batch is required' };
+  }
+
+  if (!/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?)*$/.test(normalizedBatch)) {
+    return { params: null, error: 'batch must be a comma-separated numeric list' };
+  }
+
+  // En este backend, `generateZip` no viene en clases del frontend y se fija en true.
+  const generateZip =
+    adaptedPayload.generateZip === undefined
+      ? true
+      : parseBooleanField(adaptedPayload.generateZip);
+
   if (generateZip === null) {
     return { params: null, error: 'generateZip must be boolean' };
   }
 
-  const top = parseBooleanField(payload.top, DEFAULT_RUN_PARAMS.top);
+  const top = parseBooleanField(adaptedPayload.top);
   if (top === null) {
-    return { params: null, error: 'top must be boolean' };
+    // `top` gobierna bloques de salida en el reporte; se exige explícitamente.
+    return { params: null, error: 'top is required and must be boolean' };
   }
 
+  // Contrato final normalizado listo para persistir en DB y ejecutar script R.
   return {
     params: {
       methods,
       logfc,
       cpm,
       padjust,
-      batch: batchInput,
+      batch: normalizedBatch,
       generateZip,
       top,
     },
   };
 };
 
+/**
+ * Dispara el análisis en segundo plano y persiste estado final en base de datos.
+ * Esta función nunca responde HTTP; solo actualiza estado del proyecto.
+ */
 const executeAnalysisInBackground = (params: {
   projectId: number;
   userId: number;
@@ -366,6 +625,7 @@ const executeAnalysisInBackground = (params: {
   const scriptPath = process.env.ANALYSIS_SCRIPT_PATH;
   const sourcesPath = process.env.ANALYSIS_SOURCES_PATH;
 
+  // Validación temprana de configuración para evitar bloquear proyecto indefinidamente.
   if (!scriptPath) {
     void markProjectRunFailed(
       params.projectId,
@@ -386,10 +646,12 @@ const executeAnalysisInBackground = (params: {
 
   const args = [scriptPath];
 
+  // Ruta opcional de scripts auxiliares para el pipeline.
   if (sourcesPath) {
     args.push('-s', sourcesPath);
   }
 
+  // Construye argumentos CLI con parámetros normalizados.
   args.push(
     '-i',
     params.inputPath,
@@ -420,6 +682,7 @@ const executeAnalysisInBackground = (params: {
   let stdout = '';
   let stderr = '';
 
+  // Evita dobles escrituras de estado cuando hay más de un evento de cierre/error.
   const finalizeSuccess = (): void => {
     if (settled) {
       return;
@@ -443,6 +706,7 @@ const executeAnalysisInBackground = (params: {
     });
   };
 
+  // Se limita buffer en memoria para evitar crecer sin control en ejecuciones largas.
   child.stdout.on('data', (chunk) => {
     if (stdout.length < 4000) {
       stdout += String(chunk);
@@ -463,6 +727,7 @@ const executeAnalysisInBackground = (params: {
     const runStatus = parseRunStatusFromStdout(stdout);
     const runLogFailure = findFailureInRunSummaryLog(params.outputDir);
 
+    // Éxito estricto: código 0 + sin runStatus de error + sin errores en RunSummary.log.
     if (code === 0 && (runStatus === 0 || runStatus === null) && !runLogFailure) {
       finalizeSuccess();
       return;
@@ -480,6 +745,7 @@ const executeAnalysisInBackground = (params: {
       return;
     }
 
+    // Prioridad de diagnóstico: stderr > stdout > runStatus > exit code.
     const stderrMessage = sanitizeErrorMessage(stderr);
     const stdoutMessage = sanitizeErrorMessage(stdout);
     const statusMessage = runStatus === null ? '' : getRunStatusMessage(runStatus);
@@ -501,12 +767,21 @@ const executeAnalysisInBackground = (params: {
  * Valida los datos, construye la ruta de almacenamiento y registra el proyecto en la base de datos.
  * 
  * @route POST /analysis/upload
- * @access Privado (requiere autenticación Bearer y campo `projectName` en body)
+ * @access Privado (requiere autenticación Bearer y campo `projectName` o `title` en body)
  */
 export const handleProjectUpload = async (req: Request, res: Response): Promise<void> => {
   try {
     const file = req.file;
-    const { description, projectName } = req.body;
+    const payload = (req.body || {}) as UploadProjectPayloadLike;
+    const projectNameRaw =
+      typeof payload.projectName === 'string' && payload.projectName.trim().length > 0
+        ? payload.projectName
+        : payload.title;
+    const projectName = typeof projectNameRaw === 'string' ? projectNameRaw.trim() : '';
+    const description =
+      typeof payload.description === 'string' && payload.description.trim().length > 0
+        ? payload.description.trim()
+        : null;
 
     const user = req.user;
 
@@ -517,8 +792,8 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
     }
 
     // Validar nombre del proyecto
-    if (!projectName || typeof projectName !== 'string') {
-      sendErrorResponse(res, 'Missing or invalid project name', null, 400);
+    if (!projectName) {
+      sendErrorResponse(res, 'Missing or invalid project name/title', null, 400);
       return;
     }
 
@@ -556,7 +831,7 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
     const id_project = await createProject(
       user.id_user,
       projectName,
-      description || null,
+      description,
       'active',
       relativePath
     );
@@ -605,6 +880,7 @@ export const handleGetUserProjects = async (req: Request, res: Response): Promis
       return;
     }
 
+    // Recupera listado ya ordenado por fecha desde la capa de servicio.
     const projects = await getProjectsByUser(user.id_user);
 
     sendSuccessResponse(res, 'User projects retrieved successfully', projects, 200);
@@ -636,6 +912,7 @@ export const handleDeleteProject = async (req: Request, res: Response): Promise<
       return;
     }
     
+    // Verifica pertenencia del proyecto al usuario autenticado.
     const project = await getProjectById(projectId, user.id_user);
 
     if (!project) {
@@ -648,6 +925,7 @@ export const handleDeleteProject = async (req: Request, res: Response): Promise<
       return;
     }
 
+    // Resuelve ruta absoluta segura para evitar borrar fuera del storage permitido.
     const basePath = getProjectsBasePath();
     const absoluteFilePath = resolveProjectAbsolutePath(basePath, project.path);
     if (!absoluteFilePath) {
@@ -667,6 +945,7 @@ export const handleDeleteProject = async (req: Request, res: Response): Promise<
       return;
     }
 
+    // Elimina registro en BD solo después de limpiar archivos.
     await deleteProjectById(projectId, user.id_user);
 
     sendSuccessResponse(res, 'Project deleted successfully');
@@ -698,6 +977,7 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
+    // Verifica existencia y ownership del proyecto antes de iniciar corrida.
     const project = await getProjectById(projectId, user.id_user);
 
     if (!project) {
@@ -710,6 +990,7 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
+    // Normaliza body para un contrato estable hacia el ejecutor.
     const parsed = normalizeRunParams((req.body || {}) as Record<string, unknown>);
     if (!parsed.params) {
       sendErrorResponse(res, parsed.error || 'Invalid analysis parameters', null, 400);
@@ -728,6 +1009,7 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
+    // Valida consistencia del encabezado de la tabla respecto a métodos y batch.
     const sampleValidation = validateSampleNamesAndBatch(inputPath, parsed.params);
     if (!sampleValidation.ok) {
       sendErrorResponse(res, sampleValidation.error, null, 400);
@@ -748,6 +1030,7 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
+    // Bloquea proyecto de forma atómica para evitar ejecuciones concurrentes.
     const locked = await lockProjectForRun(projectId, user.id_user, parsed.params, resultPath);
 
     if (!locked) {
@@ -755,6 +1038,7 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
+    // Lanza proceso en background y responde 202 inmediatamente.
     executeAnalysisInBackground({
       projectId,
       userId: user.id_user,

@@ -36,6 +36,10 @@ import {
 } from './auth.service';
 import { sendErrorResponse, sendSuccessResponse } from '../../utils/response';
 
+/**
+ * Respuesta parcial del endpoint de verificación de token de Google.
+ * Solo se tipan los campos que el backend consume para autenticación.
+ */
 interface GoogleTokenInfoResponse {
   aud?: string;
   iss?: string;
@@ -45,10 +49,17 @@ interface GoogleTokenInfoResponse {
   name?: string;
 }
 
+/**
+ * Respuesta parcial del intercambio OAuth2 (authorization_code -> tokens).
+ */
 interface GoogleTokenExchangeResponse {
   id_token?: string;
 }
 
+/**
+ * Crea el JWT interno de sesión de IDEAMEX.
+ * Incluye identidad mínima para autorización en endpoints privados.
+ */
 const createAuthToken = (params: { id_user: number; username: string; email: string }): string =>
   jwt.sign(
     {
@@ -60,6 +71,10 @@ const createAuthToken = (params: { id_user: number; username: string; email: str
     { expiresIn: '30d' }
   );
 
+/**
+ * Lee y valida configuración OAuth de Google desde variables de entorno.
+ * Lanza error controlado si falta cualquier variable crítica.
+ */
 const getGoogleOAuthConfig = (): {
   clientId: string;
   clientSecret: string;
@@ -76,6 +91,11 @@ const getGoogleOAuthConfig = (): {
   return { clientId, clientSecret, callbackUrl };
 };
 
+/**
+ * Valida un `id_token` de Google contra el endpoint tokeninfo.
+ * Además de validar firma/expiración en Google, se aplica validación de audiencia (`aud`)
+ * y de emisor (`iss`) para asegurar que el token pertenece a esta app.
+ */
 const verifyGoogleIdToken = async (idToken: string): Promise<{
   googleId: string;
   email: string;
@@ -86,6 +106,7 @@ const verifyGoogleIdToken = async (idToken: string): Promise<{
     throw new Error('GOOGLE_CONFIG_MISSING');
   }
 
+  // Consulta a Google para verificar token y extraer claims OpenID.
   const response = await fetch(
     `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
   );
@@ -98,14 +119,17 @@ const verifyGoogleIdToken = async (idToken: string): Promise<{
   const validIssuer =
     payload.iss === 'accounts.google.com' || payload.iss === 'https://accounts.google.com';
 
+  // Rechaza tokens sin campos obligatorios o emitidos por issuer no reconocido.
   if (!payload.sub || !payload.email || !payload.aud || !payload.email_verified || !validIssuer) {
     throw new Error('GOOGLE_TOKEN_INVALID');
   }
 
+  // Evita aceptar tokens emitidos para otro client_id.
   if (payload.aud !== googleClientId) {
     throw new Error('GOOGLE_AUDIENCE_MISMATCH');
   }
 
+  // Exige correo verificado para prevenir cuentas no confirmadas.
   if (payload.email_verified !== 'true') {
     throw new Error('GOOGLE_EMAIL_NOT_VERIFIED');
   }
@@ -117,6 +141,9 @@ const verifyGoogleIdToken = async (idToken: string): Promise<{
   };
 };
 
+/**
+ * Construye un username consistente para cuentas Google respetando límite de BD.
+ */
 const buildUsernameFromGoogleName = (name: string, fallbackEmail: string): string => {
   const trimmedName = name.trim();
   if (trimmedName.length > 0) {
@@ -125,6 +152,12 @@ const buildUsernameFromGoogleName = (name: string, fallbackEmail: string): strin
   return fallbackEmail.split('@')[0].slice(0, 60);
 };
 
+/**
+ * Unifica el flujo de "login o registro" de Google:
+ * 1) resuelve usuario existente o crea uno nuevo,
+ * 2) emite JWT interno,
+ * 3) devuelve payload estándar de sesión.
+ */
 const loginOrRegisterGoogleUser = async (params: {
   googleId: string;
   email: string;
@@ -166,10 +199,13 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
   const { email, username, password } = req.body;
 
   try {
+    // Endurece contraseña antes de persistirla.
     const hashedPassword = await bcrypt.hash(password, 12);
+    // Token de activación con vigencia de 24 horas.
     const activationToken = generateToken();
     const tokenExpiration = dayjs().add(24, 'hour').toDate();
 
+    // Registro local inicia desactivado hasta confirmar correo.
     const newUser = await createUser({
       email,
       username,
@@ -182,6 +218,7 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
       auth_provider: 'local',
     });
 
+    // El correo incluye enlace de activación con token.
     await sendActivationEmail(email, activationToken);
 
     sendSuccessResponse(
@@ -211,6 +248,7 @@ export const activateUser = async (req: Request, res: Response): Promise<void> =
   }
 
   try {
+    // El token debe existir y seguir vigente en BD.
     const user = await findUserByToken(token);
 
     if (!user) {
@@ -218,6 +256,7 @@ export const activateUser = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
+    // Activa cuenta y limpia token para evitar reuso.
     await activateUserAccount(user.id_user);
     sendSuccessResponse(res, 'Account activated successfully');
   } catch (error) {
@@ -234,28 +273,33 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
 
   try {
+    // Para login local se requiere usuario existente y password almacenado.
     const user = await findUserByEmail(email);
     if (!user || !user.password) {
       sendErrorResponse(res, 'Invalid email or password', null, 401);
       return;
     }
 
+    // Bloquea acceso si la cuenta aún no confirmó correo.
     if (user.activation !== 1) {
       sendErrorResponse(res, 'Account not activated. Please activate your account.', null, 403);
       return;
     }
 
+    // Protege cuentas Google de autenticación por password.
     if (user.auth_provider === 'google') {
       sendErrorResponse(res, 'Please use Google login for this account.', null, 403);
       return;
     }
 
+    // Verifica hash bcrypt contra contraseña ingresada.
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
       sendErrorResponse(res, 'Invalid email or password', null, 401);
       return;
     }
 
+    // Emite JWT interno con vigencia de 30 días.
     const token = jwt.sign(
       {
         id_user: user.id_user,
@@ -285,6 +329,7 @@ export const startGoogleOAuth = async (req: Request, res: Response): Promise<voi
   try {
     const { clientId, callbackUrl } = getGoogleOAuthConfig();
 
+    // Construye URL de consentimiento OAuth2 para iniciar redirección del usuario.
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     authUrl.searchParams.set('client_id', clientId);
     authUrl.searchParams.set('redirect_uri', callbackUrl);
@@ -311,11 +356,13 @@ export const handleGoogleOAuthCallback = async (req: Request, res: Response): Pr
   const errorParam = req.query.error;
   const code = req.query.code;
 
+  // Google puede regresar `error` directo si el usuario cancela o deniega permisos.
   if (typeof errorParam === 'string') {
     sendErrorResponse(res, `Google OAuth error: ${errorParam}`, null, 401);
     return;
   }
 
+  // Sin authorization code no se puede hacer intercambio por id_token.
   if (!code || typeof code !== 'string') {
     sendErrorResponse(res, 'Missing OAuth code', null, 400);
     return;
@@ -324,6 +371,7 @@ export const handleGoogleOAuthCallback = async (req: Request, res: Response): Pr
   try {
     const { clientId, clientSecret, callbackUrl } = getGoogleOAuthConfig();
 
+    // Intercambia authorization_code por tokens en el endpoint oficial de Google.
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
@@ -342,17 +390,20 @@ export const handleGoogleOAuthCallback = async (req: Request, res: Response): Pr
       throw new Error('GOOGLE_CODE_EXCHANGE_FAILED');
     }
 
+    // En este backend solo se usa id_token para validar identidad.
     const tokenPayload = (await tokenResponse.json()) as GoogleTokenExchangeResponse;
     if (!tokenPayload.id_token) {
       throw new Error('GOOGLE_ID_TOKEN_MISSING');
     }
 
+    // Valida claims y luego resuelve login/registro local.
     const googleUser = await verifyGoogleIdToken(tokenPayload.id_token);
     const loginData = await loginOrRegisterGoogleUser(googleUser);
 
     sendSuccessResponse(res, 'Google OAuth login successful', loginData);
   } catch (error) {
     if (error instanceof Error) {
+      // Regla de seguridad: no mezclar login social con cuenta local existente del mismo correo.
       if (error.message === 'LOCAL_ACCOUNT_EXISTS') {
         sendErrorResponse(
           res,
@@ -368,6 +419,7 @@ export const handleGoogleOAuthCallback = async (req: Request, res: Response): Pr
         return;
       }
 
+      // Agrupa errores de validación OAuth para responder 401 consistente.
       if (
         error.message === 'GOOGLE_CODE_EXCHANGE_FAILED' ||
         error.message === 'GOOGLE_ID_TOKEN_MISSING' ||
@@ -392,12 +444,14 @@ export const loginWithGoogle = async (req: Request, res: Response): Promise<void
   const { idToken } = req.body;
 
   try {
+    // Flujo para SPA/mobile: el frontend manda idToken directamente.
     const googleUser = await verifyGoogleIdToken(idToken);
     const loginData = await loginOrRegisterGoogleUser(googleUser);
 
     sendSuccessResponse(res, 'Google login successful', loginData);
   } catch (error) {
     if (error instanceof Error) {
+      // Evita takeover de cuentas registradas con contraseña.
       if (error.message === 'LOCAL_ACCOUNT_EXISTS') {
         sendErrorResponse(
           res,
@@ -413,11 +467,13 @@ export const loginWithGoogle = async (req: Request, res: Response): Promise<void
         return;
       }
 
+      // Token emitido para otro client_id de Google.
       if (error.message === 'GOOGLE_AUDIENCE_MISMATCH') {
         sendErrorResponse(res, 'Token de Google inválido para esta aplicación.', null, 401);
         return;
       }
 
+      // Token inválido/expirado o correo de Google sin verificar.
       if (
         error.message === 'GOOGLE_TOKEN_INVALID' ||
         error.message === 'GOOGLE_EMAIL_NOT_VERIFIED'
@@ -439,6 +495,7 @@ export const requestPasswordReset = async (req: Request, res: Response): Promise
   const { email } = req.body;
 
   try {
+    // Solo cuentas locales activas pueden recuperar contraseña por correo.
     const user = await findUserByEmail(email);
     if (!user) {
       sendErrorResponse(res, 'Email not found', null, 404);
@@ -455,9 +512,11 @@ export const requestPasswordReset = async (req: Request, res: Response): Promise
       return;
     }
 
+    // Genera token temporal de 1 hora y lo persiste en BD.
     const resetToken = generateToken();
     const expiration = new Date(Date.now() + 60 * 60 * 1000);
 
+    // Envía enlace de recuperación al correo registrado.
     await updateUserResetToken(user.id_user, resetToken, expiration);
     await sendPasswordResetEmail(email, resetToken);
 
@@ -480,12 +539,14 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
   }
 
   try {
+    // Valida existencia del token y que no haya expirado.
     const user = await findUserByResetToken(token);
     if (!user || !user.token_expiration || user.token_expiration < new Date()) {
       sendErrorResponse(res, 'Invalid or expired token', null, 400);
       return;
     }
 
+    // Reemplaza password, y limpia token de recuperación para un solo uso.
     const hashedPassword = await bcrypt.hash(password, 12);
     await updateUserPassword(user.id_user, hashedPassword);
 

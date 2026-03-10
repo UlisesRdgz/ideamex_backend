@@ -34,6 +34,7 @@ import analysisRoutes from './api/analysis/analysis.routes';
 const app: Application = express();
 
 // Middlewares globales
+// Permite parsear body JSON en todos los endpoints.
 app.use(express.json());
 
 // Helmet con configuración recomendada para evitar bloqueos CORP
@@ -52,6 +53,7 @@ if (appConfig.env !== 'production') {
 }
 
 // Verificación de conexión a la base de datos
+// Se ejecuta al arranque para fallar rápido si DB no está disponible.
 checkDatabaseConnection();
 
 // Configuración de Swagger (documentación protegida con auth)
@@ -80,6 +82,7 @@ const contactLimiter = rateLimit({
 });
 
 // Rutas principales
+// Todas usan `basePath` para soportar despliegues detrás de reverse proxy.
 app.use(`${appConfig.basePath}auth`, authRoutes);
 app.use(`${appConfig.basePath}contact`, contactLimiter, contactRoutes);
 app.use(`${appConfig.basePath}analysis`, analysisRoutes);
@@ -99,6 +102,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   }
 
   if (err?.name === 'MulterError') {
+    // Errores nativos de multer (p.ej. tamaño máximo).
     const fileErrorMessage =
       err.code === 'LIMIT_FILE_SIZE'
         ? 'Archivo demasiado grande. El máximo permitido es 25 MB'
@@ -108,6 +112,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   }
 
   if (typeof err?.message === 'string' && err.message.includes('Invalid file type')) {
+    // Error semántico emitido desde `fileFilter` de multer.
     sendErrorResponse(res, err.message, null, 400);
     return;
   }
