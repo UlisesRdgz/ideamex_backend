@@ -47,6 +47,37 @@ const METHOD_DIGIT_BY_NAME: Record<string, string> = {
   dataanalysis: '5',
   integrationresults: '6',
 };
+const RESULT_FILE_EXTENSION_ALLOWLIST = new Set([
+  '.txt',
+  '.log',
+  '.csv',
+  '.tsv',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.svg',
+  '.pdf',
+  '.zip',
+]);
+const MIME_BY_EXTENSION: Record<string, string> = {
+  '.txt': 'text/plain; charset=utf-8',
+  '.log': 'text/plain; charset=utf-8',
+  '.csv': 'text/csv; charset=utf-8',
+  '.tsv': 'text/tab-separated-values; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.pdf': 'application/pdf',
+  '.zip': 'application/zip',
+};
+
+interface ProjectResultFile {
+  name: string;
+  size_bytes: number;
+  updated_at: string;
+  mime_type: string;
+}
 
 /**
  * Resuelve la ruta base de almacenamiento de proyectos desde entorno.
@@ -255,6 +286,111 @@ const resolveProjectAbsolutePath = (basePath: string, projectRelativePath: strin
   if (
     absolutePath !== normalizedBasePath &&
     !absolutePath.startsWith(`${normalizedBasePath}${path.sep}`)
+  ) {
+    return null;
+  }
+
+  return absolutePath;
+};
+
+/**
+ * Determina la carpeta de resultados para un proyecto.
+ * Prioriza `result_path` (persistido al correr análisis) y usa fallback al directorio del archivo cargado.
+ */
+const resolveResultDirectory = (
+  basePath: string,
+  project: { result_path: string | null; path: string }
+): string | null => {
+  const resultRelativePath =
+    project.result_path && project.result_path.trim().length > 0
+      ? project.result_path
+      : path.posix.dirname(project.path);
+
+  return resolveProjectAbsolutePath(basePath, resultRelativePath);
+};
+
+/**
+ * Verifica si una extensión es segura para exponerla al frontend.
+ */
+const isAllowedResultFile = (fileName: string): boolean => {
+  const ext = path.extname(fileName).toLowerCase();
+  return RESULT_FILE_EXTENSION_ALLOWLIST.has(ext);
+};
+
+/**
+ * Infere MIME type por extensión para render inline o descarga.
+ */
+const inferMimeType = (fileName: string): string => {
+  const ext = path.extname(fileName).toLowerCase();
+  return MIME_BY_EXTENSION[ext] || 'application/octet-stream';
+};
+
+/**
+ * Convierte separadores a formato POSIX para respuestas estables en API.
+ */
+const toPosixPath = (value: string): string => value.split(path.sep).join('/');
+
+/**
+ * Recorre recursivamente el directorio de resultados y devuelve archivos permitidos.
+ */
+const listProjectResultFiles = (resultDir: string, currentDir = resultDir): ProjectResultFile[] => {
+  const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+  const files: ProjectResultFile[] = [];
+
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) {
+      continue;
+    }
+
+    const absolutePath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listProjectResultFiles(resultDir, absolutePath));
+      continue;
+    }
+
+    if (!entry.isFile() || !isAllowedResultFile(entry.name)) {
+      continue;
+    }
+
+    const stats = fs.statSync(absolutePath);
+    const relativePath = toPosixPath(path.relative(resultDir, absolutePath));
+
+    files.push({
+      name: relativePath,
+      size_bytes: stats.size,
+      updated_at: stats.mtime.toISOString(),
+      mime_type: inferMimeType(entry.name),
+    });
+  }
+
+  return files.sort((a, b) => a.name.localeCompare(b.name));
+};
+
+/**
+ * Resuelve de forma segura el archivo solicitado dentro de la carpeta de resultados.
+ * Rechaza path traversal y rutas vacías.
+ */
+const resolveResultFilePath = (resultDir: string, fileName: string): string | null => {
+  if (!fileName || fileName.trim().length === 0) {
+    return null;
+  }
+
+  const normalizedName = fileName
+    .split(/[\\/]+/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0)
+    .join(path.sep);
+
+  if (!normalizedName) {
+    return null;
+  }
+
+  const normalizedResultDir = path.resolve(resultDir);
+  const absolutePath = path.resolve(normalizedResultDir, normalizedName);
+
+  if (
+    absolutePath !== normalizedResultDir &&
+    !absolutePath.startsWith(`${normalizedResultDir}${path.sep}`)
   ) {
     return null;
   }
@@ -1060,5 +1196,161 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
   } catch (error) {
     console.error('Error in handleRunProjectAnalysis:', error);
     sendErrorResponse(res, 'Server error while starting analysis', null, 500);
+  }
+};
+
+/**
+ * Lista archivos generados por la corrida de un proyecto.
+ *
+ * @route GET /analysis/project/:projectId/results
+ * @access Privado (requiere autenticación Bearer)
+ */
+export const handleGetProjectResults = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    const projectId = Number(req.params.projectId);
+
+    if (!user || typeof user.id_user !== 'number') {
+      sendErrorResponse(res, 'Missing or invalid user information from token', null, 400);
+      return;
+    }
+
+    if (Number.isNaN(projectId)) {
+      sendErrorResponse(res, 'Invalid project ID', null, 400);
+      return;
+    }
+
+    const project = await getProjectById(projectId, user.id_user);
+    if (!project) {
+      sendErrorResponse(res, 'Project not found or access denied', null, 404);
+      return;
+    }
+
+    if (project.status !== 'completed') {
+      sendErrorResponse(
+        res,
+        'Project results are available only after successful analysis completion',
+        null,
+        409
+      );
+      return;
+    }
+
+    const basePath = getProjectsBasePath();
+    const resultDir = resolveResultDirectory(basePath, project);
+    if (!resultDir) {
+      sendErrorResponse(res, 'Project result path is invalid', null, 500);
+      return;
+    }
+
+    if (!fs.existsSync(resultDir)) {
+      sendErrorResponse(res, 'Result directory not found on server', null, 404);
+      return;
+    }
+
+    const files = listProjectResultFiles(resultDir);
+
+    sendSuccessResponse(res, 'Project results retrieved successfully', {
+      id_project: project.id_project,
+      status: project.status,
+      result_path: project.result_path,
+      files,
+    });
+  } catch (error) {
+    console.error('Error in handleGetProjectResults:', error);
+    sendErrorResponse(res, 'Server error while retrieving project results', null, 500);
+  }
+};
+
+/**
+ * Sirve un archivo individual de resultados para visualización o descarga.
+ *
+ * @route GET /analysis/project/:projectId/results/file?name=<relativePath>&download=true|false
+ * @access Privado (requiere autenticación Bearer)
+ */
+export const handleGetProjectResultFile = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    const projectId = Number(req.params.projectId);
+    const fileName = typeof req.query.name === 'string' ? req.query.name : '';
+    const download =
+      typeof req.query.download === 'string'
+        ? ['true', '1', 'yes'].includes(req.query.download.trim().toLowerCase())
+        : false;
+
+    if (!user || typeof user.id_user !== 'number') {
+      sendErrorResponse(res, 'Missing or invalid user information from token', null, 400);
+      return;
+    }
+
+    if (Number.isNaN(projectId)) {
+      sendErrorResponse(res, 'Invalid project ID', null, 400);
+      return;
+    }
+
+    if (!fileName || fileName.trim().length === 0) {
+      sendErrorResponse(res, 'Missing result file name', null, 400);
+      return;
+    }
+
+    const project = await getProjectById(projectId, user.id_user);
+    if (!project) {
+      sendErrorResponse(res, 'Project not found or access denied', null, 404);
+      return;
+    }
+
+    if (project.status !== 'completed') {
+      sendErrorResponse(
+        res,
+        'Project results are available only after successful analysis completion',
+        null,
+        409
+      );
+      return;
+    }
+
+    const basePath = getProjectsBasePath();
+    const resultDir = resolveResultDirectory(basePath, project);
+    if (!resultDir) {
+      sendErrorResponse(res, 'Project result path is invalid', null, 500);
+      return;
+    }
+
+    const resultFilePath = resolveResultFilePath(resultDir, fileName);
+    if (!resultFilePath) {
+      sendErrorResponse(res, 'Invalid result file path', null, 400);
+      return;
+    }
+
+    if (!isAllowedResultFile(resultFilePath)) {
+      sendErrorResponse(res, 'File type is not allowed for this endpoint', null, 400);
+      return;
+    }
+
+    if (!fs.existsSync(resultFilePath) || !fs.statSync(resultFilePath).isFile()) {
+      sendErrorResponse(res, 'Result file not found', null, 404);
+      return;
+    }
+
+    const safeFileName = path.basename(resultFilePath);
+    const mimeType = inferMimeType(resultFilePath);
+
+    res.setHeader(
+      'Content-Disposition',
+      `${download ? 'attachment' : 'inline'}; filename=\"${safeFileName}\"`
+    );
+    res.type(mimeType);
+
+    res.sendFile(path.resolve(resultFilePath), (error) => {
+      if (error) {
+        console.error('[RESULTS] Error sending file:', error);
+        if (!res.headersSent) {
+          sendErrorResponse(res, 'Error while sending result file', null, 500);
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error in handleGetProjectResultFile:', error);
+    sendErrorResponse(res, 'Server error while serving result file', null, 500);
   }
 };

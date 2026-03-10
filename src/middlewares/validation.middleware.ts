@@ -11,7 +11,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { body, param, validationResult } from 'express-validator';
+import { body, param, query, validationResult } from 'express-validator';
 import { sendErrorResponse } from '../utils/response';
 
 /**
@@ -463,6 +463,41 @@ export const validateRunAnalysis = [
         }
       }
 
+      return true;
+    }),
+];
+
+/**
+ * Reglas reutilizables para validar `projectId` en rutas de analysis.
+ */
+export const validateProjectIdParam = [
+  param('projectId')
+    .isInt({ min: 1 })
+    .withMessage('El projectId debe ser un entero positivo'),
+];
+
+/**
+ * Reglas para validar query params del endpoint de archivos de resultados.
+ */
+export const validateResultFileQuery = [
+  query('name')
+    .isString()
+    .withMessage('name debe ser una cadena')
+    .notEmpty()
+    .withMessage('name es obligatorio'),
+
+  query('download')
+    .optional()
+    .custom((value) => {
+      if (typeof value !== 'string') {
+        throw new Error('download debe ser string booleano');
+      }
+
+      const normalized = value.trim().toLowerCase();
+      const allowed = ['true', 'false', '1', '0', 'yes', 'no'];
+      if (!allowed.includes(normalized)) {
+        throw new Error('download debe ser true/false/1/0/yes/no');
+      }
       return true;
     }),
 ];

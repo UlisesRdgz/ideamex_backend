@@ -99,7 +99,7 @@
  *                   batch:
  *                     type: string
  *                     example: "0,0,5,1"
- *                     description: Opcional. Lista numérica separada por comas con el mismo número de elementos que muestras.
+ *                     description: Lista numérica separada por comas con el mismo número de elementos que muestras.
  *                   generateZip:
  *                     type: boolean
  *                     example: true
@@ -194,6 +194,77 @@
  *         description: Proyecto no encontrado
  *       409:
  *         description: Proyecto ya bloqueado o ya iniciado
+ *       500:
+ *         description: Error interno del servidor
+ */
+
+/**
+ * @swagger
+ * /analysis/project/{projectId}/results:
+ *   get:
+ *     summary: Lista archivos de resultados de un proyecto completado
+ *     tags: [Analysis]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del proyecto
+ *     responses:
+ *       200:
+ *         description: Resultados obtenidos correctamente
+ *       401:
+ *         description: Usuario no autenticado
+ *       404:
+ *         description: Proyecto o carpeta de resultados no encontrado
+ *       409:
+ *         description: El proyecto aún no ha finalizado exitosamente
+ *       500:
+ *         description: Error interno del servidor
+ */
+
+/**
+ * @swagger
+ * /analysis/project/{projectId}/results/file:
+ *   get:
+ *     summary: Descarga o visualiza un archivo individual de resultados
+ *     tags: [Analysis]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del proyecto
+ *       - in: query
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ruta relativa del archivo dentro de la carpeta de resultados
+ *       - in: query
+ *         name: download
+ *         required: false
+ *         schema:
+ *           type: string
+ *           example: "true"
+ *         description: Si es true/1/yes fuerza descarga; en otro caso intenta visualización inline
+ *     responses:
+ *       200:
+ *         description: Archivo servido correctamente
+ *       400:
+ *         description: Parámetros inválidos o tipo de archivo no permitido
+ *       401:
+ *         description: Usuario no autenticado
+ *       404:
+ *         description: Proyecto o archivo no encontrado
+ *       409:
+ *         description: El proyecto aún no ha finalizado exitosamente
  *       500:
  *         description: Error interno del servidor
  */
