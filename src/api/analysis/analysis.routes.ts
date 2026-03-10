@@ -17,10 +17,17 @@ import {
   handleGetUserProjects,
   handleDeleteProject,
   handleRunProjectAnalysis,
+  handleGetProjectResults,
+  handleGetProjectResultFile,
 } from './analysis.controller';
 import { uploadProject } from '../../config/multer';
 import { requireUser } from '../auth/auth.middleware';
-import { validateRequest, validateRunAnalysis } from '../../middlewares/validation.middleware';
+import {
+  validateProjectIdParam,
+  validateRequest,
+  validateResultFileQuery,
+  validateRunAnalysis,
+} from '../../middlewares/validation.middleware';
 
 const router = Router();
 
@@ -71,6 +78,33 @@ router.post(
   validateRunAnalysis,
   validateRequest,
   handleRunProjectAnalysis
+);
+
+/**
+ * @route GET /analysis/project/:projectId/results
+ * @desc Lista archivos de resultados para un proyecto finalizado
+ * @access Privado (requiere autenticación Bearer)
+ */
+router.get(
+  '/project/:projectId/results',
+  requireUser,
+  validateProjectIdParam,
+  validateRequest,
+  handleGetProjectResults
+);
+
+/**
+ * @route GET /analysis/project/:projectId/results/file
+ * @desc Sirve archivo individual de resultados (inline o descarga)
+ * @access Privado (requiere autenticación Bearer)
+ */
+router.get(
+  '/project/:projectId/results/file',
+  requireUser,
+  validateProjectIdParam,
+  validateResultFileQuery,
+  validateRequest,
+  handleGetProjectResultFile
 );
 
 export default router;
