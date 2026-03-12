@@ -5,7 +5,10 @@
   "scripts": {
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "r:up": "sh -c 'docker compose -f docker-compose.r.yml up -d --build r || docker-compose -f docker-compose.r.yml up -d --build r'",
+    "r:down": "sh -c 'docker compose -f docker-compose.r.yml down || docker-compose -f docker-compose.r.yml down'",
+    "r:logs": "sh -c 'docker compose -f docker-compose.r.yml logs -f r || docker-compose -f docker-compose.r.yml logs -f r'"
   },
   "keywords": [],
   "author": "",

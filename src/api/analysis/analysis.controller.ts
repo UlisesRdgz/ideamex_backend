@@ -79,6 +79,13 @@ interface ProjectResultFile {
   mime_type: string;
 }
 
+type AnalysisExecutionMode = 'local' | 'docker';
+
+interface AnalysisRuntimeCommand {
+  command: string;
+  args: string[];
+}
+
 /**
  * Resuelve la ruta base de almacenamiento de proyectos desde entorno.
  */
@@ -90,6 +97,141 @@ const getProjectsBasePath = (): string => {
  * Convierte boolean de JavaScript al literal esperado por scripts de R.
  */
 const toRBoolean = (value: boolean): string => (value ? 'TRUE' : 'FALSE');
+
+/**
+ * Resuelve modo de ejecución de R. Valores no válidos caen a `local`.
+ */
+const resolveAnalysisExecutionMode = (): AnalysisExecutionMode => {
+  const rawMode = (process.env.ANALYSIS_EXECUTION_MODE || 'local').trim().toLowerCase();
+  return rawMode === 'docker' ? 'docker' : 'local';
+};
+
+/**
+ * Indica si una ruta absoluta pertenece a un directorio base.
+ */
+const isPathInsideBase = (basePath: string, targetPath: string): boolean => {
+  const normalizedBase = path.resolve(basePath);
+  const normalizedTarget = path.resolve(targetPath);
+
+  if (normalizedBase === normalizedTarget) {
+    return true;
+  }
+
+  return normalizedTarget.startsWith(`${normalizedBase}${path.sep}`);
+};
+
+/**
+ * Mapea una ruta absoluta del host al path equivalente dentro del contenedor.
+ */
+const mapHostPathToContainer = (
+  hostPath: string,
+  hostProjectsBase: string,
+  containerProjectsBase: string
+): string | null => {
+  const normalizedHostBase = path.resolve(hostProjectsBase);
+  const normalizedHostPath = path.resolve(hostPath);
+
+  if (!isPathInsideBase(normalizedHostBase, normalizedHostPath)) {
+    return null;
+  }
+
+  const relativePath = path.relative(normalizedHostBase, normalizedHostPath);
+  const containerSegments = relativePath.split(path.sep).filter((segment) => segment.length > 0);
+  return path.posix.join(containerProjectsBase, ...containerSegments);
+};
+
+/**
+ * Construye comando y argumentos para ejecutar el pipeline en modo local o docker.
+ */
+const buildAnalysisRuntimeCommand = (params: {
+  inputPath: string;
+  outputDir: string;
+  runParams: AnalysisRunParams;
+}): { runtime: AnalysisRuntimeCommand | null; error?: string } => {
+  const mode = resolveAnalysisExecutionMode();
+
+  const cliArgs = [
+    '-m',
+    params.runParams.methods,
+    '-l',
+    String(params.runParams.logfc),
+    '-f',
+    String(params.runParams.cpm),
+    '-u',
+    String(params.runParams.padjust),
+  ];
+
+  if (params.runParams.batch !== null) {
+    cliArgs.push('-b', params.runParams.batch);
+  }
+
+  cliArgs.push('-g', toRBoolean(params.runParams.generateZip), '-t', toRBoolean(params.runParams.top));
+
+  if (mode === 'local') {
+    const rscriptBin = process.env.ANALYSIS_RSCRIPT_BIN || 'Rscript';
+    const scriptPath = process.env.ANALYSIS_SCRIPT_PATH;
+    const sourcesPath = process.env.ANALYSIS_SOURCES_PATH;
+
+    if (!scriptPath) {
+      return { runtime: null, error: 'ANALYSIS_SCRIPT_PATH is not configured in environment variables' };
+    }
+
+    if (!fs.existsSync(scriptPath)) {
+      return { runtime: null, error: `Analysis script not found at: ${scriptPath}` };
+    }
+
+    const args = [scriptPath];
+    if (sourcesPath) {
+      args.push('-s', sourcesPath);
+    }
+
+    args.push('-i', params.inputPath, '-o', params.outputDir, ...cliArgs);
+    return { runtime: { command: rscriptBin, args } };
+  }
+
+  const containerName = (process.env.ANALYSIS_DOCKER_CONTAINER || '').trim();
+  const dockerScriptPath = (process.env.ANALYSIS_DOCKER_SCRIPT_PATH || '').trim();
+  const dockerSourcesPath = (process.env.ANALYSIS_DOCKER_SOURCES_PATH || '').trim();
+  const hostProjectsBase = path.resolve(
+    process.env.ANALYSIS_DOCKER_HOST_PROJECTS_PATH || getProjectsBasePath()
+  );
+  const containerProjectsBase = (process.env.ANALYSIS_DOCKER_CONTAINER_PROJECTS_PATH || '/workspace/projects').trim();
+
+  if (!containerName) {
+    return { runtime: null, error: 'ANALYSIS_DOCKER_CONTAINER is not configured' };
+  }
+
+  if (!dockerScriptPath) {
+    return { runtime: null, error: 'ANALYSIS_DOCKER_SCRIPT_PATH is not configured' };
+  }
+
+  const inputPathInContainer = mapHostPathToContainer(
+    params.inputPath,
+    hostProjectsBase,
+    containerProjectsBase
+  );
+  const outputDirInContainer = mapHostPathToContainer(
+    params.outputDir,
+    hostProjectsBase,
+    containerProjectsBase
+  );
+
+  if (!inputPathInContainer || !outputDirInContainer) {
+    return {
+      runtime: null,
+      error:
+        `Input/output path is outside ANALYSIS_DOCKER_HOST_PROJECTS_PATH (${hostProjectsBase})`,
+    };
+  }
+
+  const args = ['exec', containerName, 'Rscript', dockerScriptPath];
+  if (dockerSourcesPath) {
+    args.push('-s', dockerSourcesPath);
+  }
+
+  args.push('-i', inputPathInContainer, '-o', outputDirInContainer, ...cliArgs);
+  return { runtime: { command: 'docker', args } };
+};
 
 /**
  * Limpia mensajes de error para hacerlos seguros y compactos antes de persistirlos.
@@ -755,61 +897,9 @@ const executeAnalysisInBackground = (params: {
   inputPath: string;
   outputDir: string;
   resultPath: string;
-  runParams: AnalysisRunParams;
+  runtime: AnalysisRuntimeCommand;
 }): void => {
-  const rscriptBin = process.env.ANALYSIS_RSCRIPT_BIN || 'Rscript';
-  const scriptPath = process.env.ANALYSIS_SCRIPT_PATH;
-  const sourcesPath = process.env.ANALYSIS_SOURCES_PATH;
-
-  // Validación temprana de configuración para evitar bloquear proyecto indefinidamente.
-  if (!scriptPath) {
-    void markProjectRunFailed(
-      params.projectId,
-      params.userId,
-      'ANALYSIS_SCRIPT_PATH is not configured in environment variables'
-    );
-    return;
-  }
-
-  if (!fs.existsSync(scriptPath)) {
-    void markProjectRunFailed(
-      params.projectId,
-      params.userId,
-      `Analysis script not found at: ${scriptPath}`
-    );
-    return;
-  }
-
-  const args = [scriptPath];
-
-  // Ruta opcional de scripts auxiliares para el pipeline.
-  if (sourcesPath) {
-    args.push('-s', sourcesPath);
-  }
-
-  // Construye argumentos CLI con parámetros normalizados.
-  args.push(
-    '-i',
-    params.inputPath,
-    '-o',
-    params.outputDir,
-    '-m',
-    params.runParams.methods,
-    '-l',
-    String(params.runParams.logfc),
-    '-f',
-    String(params.runParams.cpm),
-    '-u',
-    String(params.runParams.padjust)
-  );
-
-  if (params.runParams.batch !== null) {
-    args.push('-b', params.runParams.batch);
-  }
-
-  args.push('-g', toRBoolean(params.runParams.generateZip), '-t', toRBoolean(params.runParams.top));
-
-  const child = spawn(rscriptBin, args, {
+  const child = spawn(params.runtime.command, params.runtime.args, {
     cwd: params.outputDir,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -1155,11 +1245,15 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
     const outputDir = path.dirname(inputPath);
     const resultPath = path.relative(path.resolve(basePath), outputDir).split(path.sep).join('/');
 
-    const scriptPath = process.env.ANALYSIS_SCRIPT_PATH;
-    if (!scriptPath || !fs.existsSync(scriptPath)) {
+    const runtimeBuild = buildAnalysisRuntimeCommand({
+      inputPath,
+      outputDir,
+      runParams: parsed.params,
+    });
+    if (!runtimeBuild.runtime) {
       sendErrorResponse(
         res,
-        'Analysis runtime is not configured correctly on server (ANALYSIS_SCRIPT_PATH)',
+        runtimeBuild.error || 'Analysis runtime is not configured correctly on server',
         null,
         500
       );
@@ -1181,7 +1275,7 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       inputPath,
       outputDir,
       resultPath,
-      runParams: parsed.params,
+      runtime: runtimeBuild.runtime,
     });
 
     sendSuccessResponse(
