@@ -18,6 +18,8 @@ import { Request, Response } from 'express';
 import { sanitizeEmailPrefix, sanitizeName } from '../../utils/file';
 import {
   AnalysisRunParams,
+  ProjectJsonPayload,
+  ProjectRunConfigPayload,
   createProject,
   projectExists,
   getProjectsByUser,
@@ -31,6 +33,7 @@ import { sendErrorResponse, sendSuccessResponse } from '../../utils/response';
 import {
   AnalysisRunPayloadLike,
   FrontAnalysisParametersLike,
+  FrontComparisonLike,
   FrontMethodLike,
   FrontMethodsSelectionLike,
   FrontSampleLike,
@@ -241,6 +244,45 @@ const sanitizeErrorMessage = (rawMessage: string): string => {
 };
 
 /**
+ * Intenta parsear JSON cuando el campo llega serializado como string.
+ * Si no parece JSON o falla el parseo, devuelve el valor original.
+ */
+const parseJsonIfNeeded = (value: unknown): unknown => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return value;
+  }
+
+  const startsAsJson = trimmed.startsWith('{') || trimmed.startsWith('[');
+  if (!startsAsJson) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+};
+
+/**
+ * Extrae `imageUrl` opcional desde upload.
+ * Si no existe o viene vacío, devuelve `undefined`.
+ */
+const extractUploadImageUrl = (payload: UploadProjectPayloadLike): string | undefined => {
+  if (typeof payload.imageUrl !== 'string') {
+    return undefined;
+  }
+
+  const normalized = payload.imageUrl.trim();
+  return normalized.length > 0 ? normalized : undefined;
+};
+
+/**
  * Detecta errores de duplicado de llave única devueltos por MariaDB.
  */
 const isDuplicateEntryError = (error: unknown): boolean => {
@@ -350,6 +392,91 @@ const buildBatchFromSamples = (samples: FrontSampleLike[]): string | null => {
 };
 
 /**
+ * Convierte el formato compacto de métodos (por ejemplo `123`) a `selectedMethods`.
+ */
+const buildSelectedMethodsFromDigits = (
+  methods: string
+): ProjectRunConfigPayload['selectedMethods'] => {
+  return {
+    edgeR: methods.includes('1'),
+    limma: methods.includes('2'),
+    noiseq: methods.includes('3'),
+    deseq2: methods.includes('4'),
+    dataAnalysis: methods.includes('5'),
+    integrationResults: methods.includes('6'),
+  };
+};
+
+/**
+ * Normaliza el payload de `run` al snapshot que se persiste en `projects`.
+ * Se guarda exactamente la configuración usada para la corrida.
+ */
+const normalizeRunProjectPayload = (
+  payload: Record<string, unknown>,
+  runParams: AnalysisRunParams
+): ProjectRunConfigPayload => {
+  const body = payload as AnalysisRunPayloadLike;
+  const rawSamples = parseJsonIfNeeded(body.samples);
+  const rawComparisons = parseJsonIfNeeded(body.comparisons);
+  const rawSelectedMethods = parseJsonIfNeeded(body.selectedMethods);
+  const rawParameters = parseJsonIfNeeded(body.parameters);
+
+  const samples = Array.isArray(rawSamples)
+    ? (rawSamples as FrontSampleLike[])
+        .filter((row) => row && typeof row === 'object')
+        .map((row) => ({
+          name: typeof row.name === 'string' ? row.name.trim() : '',
+          batch: row.batch === undefined || row.batch === null ? '' : String(row.batch).trim(),
+        }))
+        .filter((row) => row.name.length > 0)
+    : [];
+
+  const comparisons = Array.isArray(rawComparisons)
+    ? (rawComparisons as FrontComparisonLike[])
+        .filter((row) => row && typeof row === 'object')
+        .map((row) => ({
+          base: typeof row.base === 'string' ? row.base.trim() : '',
+          target: typeof row.target === 'string' ? row.target.trim() : '',
+          selected: row.selected === undefined ? Boolean(row.isCustom) : Boolean(row.selected),
+        }))
+        .filter((row) => row.base.length > 0 && row.target.length > 0)
+    : [];
+
+  let selectedMethods: ProjectRunConfigPayload['selectedMethods'] = buildSelectedMethodsFromDigits(
+    runParams.methods
+  );
+
+  if (rawSelectedMethods && typeof rawSelectedMethods === 'object' && !Array.isArray(rawSelectedMethods)) {
+    selectedMethods = {
+      edgeR: Boolean((rawSelectedMethods as FrontMethodsSelectionLike).edgeR),
+      limma: Boolean((rawSelectedMethods as FrontMethodsSelectionLike).limma),
+      noiseq: Boolean((rawSelectedMethods as FrontMethodsSelectionLike).noiseq),
+      deseq2: Boolean((rawSelectedMethods as FrontMethodsSelectionLike).deseq2),
+      dataAnalysis: Boolean((rawSelectedMethods as FrontMethodsSelectionLike).dataAnalysis),
+      integrationResults: Boolean((rawSelectedMethods as FrontMethodsSelectionLike).integrationResults),
+    };
+  }
+
+  const corrplot =
+    rawParameters && typeof rawParameters === 'object' && !Array.isArray(rawParameters)
+      ? Boolean((rawParameters as FrontAnalysisParametersLike).corrplot)
+      : false;
+
+  return {
+    samples,
+    selectedMethods,
+    comparisons,
+    parameters: {
+      fdr: String(runParams.padjust),
+      logFC: String(runParams.logfc),
+      cpm: String(runParams.cpm),
+      top: runParams.top,
+      corrplot,
+    },
+  };
+};
+
+/**
  * Adapta payloads del frontend (ProjectRequest/Project) al formato legacy del backend.
  * Soporta ambos estilos para mantener compatibilidad en clientes existentes.
  */
@@ -436,19 +563,11 @@ const resolveProjectAbsolutePath = (basePath: string, projectRelativePath: strin
 };
 
 /**
- * Determina la carpeta de resultados para un proyecto.
- * Prioriza `result_path` (persistido al correr análisis) y usa fallback al directorio del archivo cargado.
+ * Determina la carpeta de resultados de un proyecto a partir del archivo subido.
+ * El pipeline escribe en el mismo directorio del archivo de entrada.
  */
-const resolveResultDirectory = (
-  basePath: string,
-  project: { result_path: string | null; path: string }
-): string | null => {
-  const resultRelativePath =
-    project.result_path && project.result_path.trim().length > 0
-      ? project.result_path
-      : path.posix.dirname(project.path);
-
-  return resolveProjectAbsolutePath(basePath, resultRelativePath);
+const resolveResultDirectory = (basePath: string, project: { path: string }): string | null => {
+  return resolveProjectAbsolutePath(basePath, path.posix.dirname(project.path));
 };
 
 /**
@@ -896,7 +1015,6 @@ const executeAnalysisInBackground = (params: {
   userId: number;
   inputPath: string;
   outputDir: string;
-  resultPath: string;
   runtime: AnalysisRuntimeCommand;
 }): void => {
   const child = spawn(params.runtime.command, params.runtime.args, {
@@ -915,7 +1033,7 @@ const executeAnalysisInBackground = (params: {
     }
 
     settled = true;
-    void markProjectRunCompleted(params.projectId, params.userId, params.resultPath).catch((dbError) => {
+    void markProjectRunCompleted(params.projectId, params.userId).catch((dbError) => {
       console.error('[ANALYSIS] Error saving success status:', dbError);
     });
   };
@@ -926,8 +1044,7 @@ const executeAnalysisInBackground = (params: {
     }
 
     settled = true;
-    const detail = sanitizeErrorMessage(message);
-    void markProjectRunFailed(params.projectId, params.userId, detail).catch((dbError) => {
+    void markProjectRunFailed(params.projectId, params.userId).catch((dbError) => {
       console.error('[ANALYSIS] Error saving failure status:', dbError);
     });
   };
@@ -993,17 +1110,13 @@ const executeAnalysisInBackground = (params: {
  * Valida los datos, construye la ruta de almacenamiento y registra el proyecto en la base de datos.
  * 
  * @route POST /analysis/upload
- * @access Privado (requiere autenticación Bearer y campo `projectName` o `title` en body)
+ * @access Privado (requiere autenticación Bearer y campo `title` en body)
  */
 export const handleProjectUpload = async (req: Request, res: Response): Promise<void> => {
   try {
     const file = req.file;
     const payload = (req.body || {}) as UploadProjectPayloadLike;
-    const projectNameRaw =
-      typeof payload.projectName === 'string' && payload.projectName.trim().length > 0
-        ? payload.projectName
-        : payload.title;
-    const projectName = typeof projectNameRaw === 'string' ? projectNameRaw.trim() : '';
+    const title = typeof payload.title === 'string' ? payload.title.trim() : '';
     const description =
       typeof payload.description === 'string' && payload.description.trim().length > 0
         ? payload.description.trim()
@@ -1017,9 +1130,9 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
       return;
     }
 
-    // Validar nombre del proyecto
-    if (!projectName) {
-      sendErrorResponse(res, 'Missing or invalid project name/title', null, 400);
+    // Validar título del proyecto
+    if (!title) {
+      sendErrorResponse(res, 'Missing or invalid title', null, 400);
       return;
     }
 
@@ -1030,7 +1143,7 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
     }
 
     // Verificar duplicado
-    const alreadyExists = await projectExists(user.id_user, projectName);
+    const alreadyExists = await projectExists(user.id_user, title);
     if (alreadyExists) {
       try {
         if (file.path && fs.existsSync(file.path)) {
@@ -1044,31 +1157,61 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
         console.error('[FS] Error cleaning duplicate upload:', cleanupError);
       }
 
-      sendErrorResponse(res, 'A project with the same name already exists', null, 409);
+      sendErrorResponse(res, 'A project with the same title already exists', null, 409);
       return;
     }
 
     // Construir la ruta relativa del archivo, manteniendo la misma sanitización que multer
     const emailPrefix = sanitizeEmailPrefix(user.email);
-    const projectFolder = sanitizeName(projectName);
+    const projectFolder = sanitizeName(title);
     const relativePath = path.posix.join(emailPrefix, projectFolder, file.filename);
+    const createPayload: ProjectJsonPayload = {
+      imageUrl: extractUploadImageUrl(payload),
+    };
+    const inputStatus = typeof payload.status === 'string' ? payload.status.trim().toUpperCase() : '';
+    // Mapea entrada flexible a valores válidos de ProjectStatusEnum.
+    const statusMap: Record<string, 'PENDING' | 'PROCESSING' | 'FAILED' | 'COMPLETED'> = {
+      PENDING: 'PENDING',
+      PROCESSING: 'PROCESSING',
+      FAILED: 'FAILED',
+      COMPLETED: 'COMPLETED',
+    };
+    const status = statusMap[inputStatus] || 'PENDING';
 
     // Insertar proyecto en la base de datos
-    const id_project = await createProject(
+    const createdProjectId = await createProject(
       user.id_user,
-      projectName,
+      title,
       description,
-      'active',
-      relativePath
+      status,
+      relativePath,
+      createPayload
     );
 
     sendSuccessResponse(
       res,
       'Project uploaded successfully',
       {
-        id_project,
-        name: projectName,
-        path: relativePath,
+        id: createdProjectId,
+        title,
+        description,
+        // En JSON, `undefined` elimina la llave; usamos `null` para mantener contrato visible.
+        imageUrl: createPayload.imageUrl ?? null,
+        file: relativePath,
+        samples: null,
+        selectedMethods: null,
+        comparisons: null,
+        parameters: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        status:
+          inputStatus === 'PENDING' ||
+          inputStatus === 'PROCESSING' ||
+          inputStatus === 'FAILED' ||
+          inputStatus === 'COMPLETED'
+            ? inputStatus
+            : 'PENDING',
+        userId: String(user.id_user),
       },
       201
     );
@@ -1083,7 +1226,7 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
           console.error('[FS] Error cleaning file after duplicate key:', cleanupError);
         }
       }
-      sendErrorResponse(res, 'A project with the same name already exists', null, 409);
+      sendErrorResponse(res, 'A project with the same title already exists', null, 409);
       return;
     }
 
@@ -1146,8 +1289,13 @@ export const handleDeleteProject = async (req: Request, res: Response): Promise<
       return;
     }
 
-    if (project.locked_at) {
-      sendErrorResponse(res, 'Project is locked and cannot be deleted after analysis start', null, 409);
+    if (project.status !== 'PENDING') {
+      sendErrorResponse(
+        res,
+        'Project cannot be deleted because analysis already started or finished',
+        null,
+        409
+      );
       return;
     }
 
@@ -1211,8 +1359,8 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
-    if (project.locked_at) {
-      sendErrorResponse(res, 'This project already started analysis and is locked', null, 409);
+    if (project.status !== 'PENDING') {
+      sendErrorResponse(res, 'This project is not pending and cannot be executed again', null, 409);
       return;
     }
 
@@ -1243,7 +1391,6 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
     }
 
     const outputDir = path.dirname(inputPath);
-    const resultPath = path.relative(path.resolve(basePath), outputDir).split(path.sep).join('/');
 
     const runtimeBuild = buildAnalysisRuntimeCommand({
       inputPath,
@@ -1260,8 +1407,12 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
-    // Bloquea proyecto de forma atómica para evitar ejecuciones concurrentes.
-    const locked = await lockProjectForRun(projectId, user.id_user, parsed.params, resultPath);
+    // Persiste snapshot de corrida y bloquea proyecto de forma atómica.
+    const runProjectPayload = normalizeRunProjectPayload(
+      (req.body || {}) as Record<string, unknown>,
+      parsed.params
+    );
+    const locked = await lockProjectForRun(projectId, user.id_user, runProjectPayload);
 
     if (!locked) {
       sendErrorResponse(res, 'Project already locked by another run', null, 409);
@@ -1274,7 +1425,6 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       userId: user.id_user,
       inputPath,
       outputDir,
-      resultPath,
       runtime: runtimeBuild.runtime,
     });
 
@@ -1282,7 +1432,7 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       res,
       'Analysis started successfully',
       {
-        id_project: projectId,
+        id: projectId,
         run_status: 'running',
       },
       202
@@ -1320,7 +1470,7 @@ export const handleGetProjectResults = async (req: Request, res: Response): Prom
       return;
     }
 
-    if (project.status !== 'completed') {
+    if (project.status !== 'COMPLETED') {
       sendErrorResponse(
         res,
         'Project results are available only after successful analysis completion',
@@ -1345,9 +1495,8 @@ export const handleGetProjectResults = async (req: Request, res: Response): Prom
     const files = listProjectResultFiles(resultDir);
 
     sendSuccessResponse(res, 'Project results retrieved successfully', {
-      id_project: project.id_project,
+      id: project.id_project,
       status: project.status,
-      result_path: project.result_path,
       files,
     });
   } catch (error) {
@@ -1393,7 +1542,7 @@ export const handleGetProjectResultFile = async (req: Request, res: Response): P
       return;
     }
 
-    if (project.status !== 'completed') {
+    if (project.status !== 'COMPLETED') {
       sendErrorResponse(
         res,
         'Project results are available only after successful analysis completion',

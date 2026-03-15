@@ -56,6 +56,7 @@ export interface FrontComparisonLike {
   base?: unknown;
   target?: unknown;
   isCustom?: unknown;
+  selected?: unknown;
 }
 
 /**
@@ -78,11 +79,16 @@ export interface AnalysisRunPayloadLike {
 
 /**
  * Campos esperados para crear un proyecto desde multipart/form-data.
- * Se acepta `projectName` (legacy) o `title` (frontend actual).
+ * Se usa `title` como único identificador de nombre del proyecto.
  */
 export interface UploadProjectPayloadLike {
-  projectName?: unknown;
   title?: unknown;
   description?: unknown;
+  imageUrl?: unknown;
+  samples?: unknown;
+  selectedMethods?: unknown;
+  comparisons?: unknown;
+  parameters?: unknown;
+  status?: unknown;
+  userId?: unknown;
 }
-
