@@ -18,16 +18,12 @@ import { isValidExtension, sanitizeName, ensureDirectory, sanitizeEmailPrefix } 
 
 /**
  * Configuración del almacenamiento de archivos para proyectos.
- * Crea carpetas por usuario y proyecto usando el token JWT y `req.body.projectName|title`.
+ * Crea carpetas por usuario y proyecto usando el token JWT y `req.body.title`.
  */
 export const projectStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const authHeader = req.header('Authorization');
-    const projectNameRaw =
-      typeof req.body?.projectName === 'string' && req.body.projectName.trim().length > 0
-        ? req.body.projectName
-        : req.body?.title;
-    const projectName = typeof projectNameRaw === 'string' ? projectNameRaw.trim() : '';
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
     const withStatus = (message: string, statusCode: number): Error => {
       const err = new Error(message) as Error & { statusCode?: number };
       err.statusCode = statusCode;
@@ -50,13 +46,13 @@ export const projectStorage = multer.diskStorage({
     }
 
     const email = decoded.email;
-    if (!email || !projectName) {
-      return cb(withStatus('Missing user or projectName/title', 400), '');
+    if (!email || !title) {
+      return cb(withStatus('Missing user or title', 400), '');
     }
 
     // Reproduce la misma sanitización usada por controladores para evitar rutas inconsistentes.
     const emailPrefix = sanitizeEmailPrefix(email.split('@')[0]);
-    const projectFolder = sanitizeName(projectName);
+    const projectFolder = sanitizeName(title);
     const basePath = process.env.PROJECTS_BASE_PATH || path.resolve(process.cwd(), 'projects');
     const fullFolder = path.join(basePath, emailPrefix, projectFolder);
 

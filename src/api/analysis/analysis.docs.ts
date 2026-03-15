@@ -27,17 +27,15 @@
  *             type: object
  *             required:
  *               - file
+ *               - title
  *             properties:
  *               file:
  *                 type: string
  *                 format: binary
  *                 description: Archivo a subir (.csv, .tsv o .txt)
- *               projectName:
- *                 type: string
- *                 description: Nombre del proyecto (formato legacy backend)
  *               title:
  *                 type: string
- *                 description: Nombre del proyecto (formato frontend Project)
+ *                 description: Título del proyecto
  *               description:
  *                 type: string
  *                 description: Descripción opcional del proyecto
