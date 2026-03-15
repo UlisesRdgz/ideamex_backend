@@ -32,9 +32,6 @@ import {
 import { sendErrorResponse, sendSuccessResponse } from '../../utils/response';
 import {
   AnalysisRunPayloadLike,
-  FrontAnalysisParametersLike,
-  FrontComparisonLike,
-  FrontMethodLike,
   FrontMethodsSelectionLike,
   FrontSampleLike,
   UploadProjectPayloadLike,
@@ -42,14 +39,6 @@ import {
 
 const RUN_LOG_FILE = 'RunSummary.log';
 const SAMPLE_NAME_PATTERN = /^.+_[a-zA-Z0-9]+$/;
-const METHOD_DIGIT_BY_NAME: Record<string, string> = {
-  edger: '1',
-  limma: '2',
-  noiseq: '3',
-  deseq2: '4',
-  dataanalysis: '5',
-  integrationresults: '6',
-};
 const RESULT_FILE_EXTENSION_ALLOWLIST = new Set([
   '.txt',
   '.log',
@@ -294,65 +283,6 @@ const isDuplicateEntryError = (error: unknown): boolean => {
   return err.code === 'ER_DUP_ENTRY' || err.errno === 1062;
 };
 
-/**
- * Convierte valores flexibles (`true`, `false`, `1`, `0`) a boolean estricto.
- * Devuelve `null` cuando el valor no puede interpretarse.
- */
-const parseBooleanField = (value: unknown): boolean | null => {
-  if (value === undefined || value === null || value === '') {
-    return null;
-  }
-
-  if (typeof value === 'boolean') {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === 'true' || normalized === '1') {
-      return true;
-    }
-    if (normalized === 'false' || normalized === '0') {
-      return false;
-    }
-  }
-
-  return null;
-};
-
-const normalizeMethodName = (name: string): string => {
-  // Normaliza para permitir equivalencias como "edge-r", "edgeR" o "EDGE R".
-  return name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-};
-
-const buildMethodsFromMethodArray = (methods: FrontMethodLike[]): string => {
-  const selectedDigits: string[] = [];
-
-  for (const method of methods) {
-    if (!method || typeof method !== 'object') {
-      continue;
-    }
-
-    const name = typeof method.name === 'string' ? method.name : null;
-    if (!name) {
-      continue;
-    }
-
-    if (method.isSelected !== undefined && typeof method.isSelected === 'boolean' && !method.isSelected) {
-      continue;
-    }
-
-    const key = normalizeMethodName(name);
-    const digit = METHOD_DIGIT_BY_NAME[key];
-    if (digit) {
-      selectedDigits.push(digit);
-    }
-  }
-
-  // Deduplica para evitar repetir métodos cuando la UI manda duplicados.
-  return Array.from(new Set(selectedDigits)).join('');
-};
-
 const buildMethodsFromSelectionObject = (selection: FrontMethodsSelectionLike): string => {
   const digits: string[] = [];
 
@@ -365,6 +295,200 @@ const buildMethodsFromSelectionObject = (selection: FrontMethodsSelectionLike): 
   if (selection.integrationResults === true) digits.push('6');
 
   return digits.join('');
+};
+
+const RUN_PAYLOAD_REQUIRED_KEYS = ['samples', 'selectedMethods', 'comparisons', 'parameters'] as const;
+const RUN_PAYLOAD_ALLOWED_KEYS = new Set<string>(RUN_PAYLOAD_REQUIRED_KEYS);
+const RUN_SELECTED_METHODS_KEYS = [
+  'edgeR',
+  'limma',
+  'noiseq',
+  'deseq2',
+  'dataAnalysis',
+  'integrationResults',
+] as const;
+const RUN_COMPARISON_KEYS = ['base', 'target', 'selected'] as const;
+const RUN_PARAMETERS_KEYS = ['fdr', 'logFC', 'cpm', 'top', 'corrplot'] as const;
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+};
+
+const findUnsupportedKeys = (data: Record<string, unknown>, allowedKeys: readonly string[]): string[] => {
+  const allowed = new Set(allowedKeys);
+  return Object.keys(data).filter((key) => !allowed.has(key));
+};
+
+const normalizeRunProjectPayload = (
+  payload: Record<string, unknown>
+): { data: ProjectRunConfigPayload | null; error?: string } => {
+  const unsupportedKeys = Object.keys(payload).filter((key) => !RUN_PAYLOAD_ALLOWED_KEYS.has(key));
+  if (unsupportedKeys.length > 0) {
+    return {
+      data: null,
+      error: `Unsupported fields in run payload: ${unsupportedKeys.join(', ')}`,
+    };
+  }
+
+  const missingKeys = RUN_PAYLOAD_REQUIRED_KEYS.filter((key) => payload[key] === undefined);
+  if (missingKeys.length > 0) {
+    return {
+      data: null,
+      error: `Missing required fields in run payload: ${missingKeys.join(', ')}`,
+    };
+  }
+
+  const body = payload as AnalysisRunPayloadLike;
+  const rawSamples = parseJsonIfNeeded(body.samples);
+  const rawSelectedMethods = parseJsonIfNeeded(body.selectedMethods);
+  const rawComparisons = parseJsonIfNeeded(body.comparisons);
+  const rawParameters = parseJsonIfNeeded(body.parameters);
+
+  if (!Array.isArray(rawSamples) || rawSamples.length === 0) {
+    return { data: null, error: 'samples must be a non-empty array' };
+  }
+
+  const samples: ProjectRunConfigPayload['samples'] = [];
+  for (let index = 0; index < rawSamples.length; index += 1) {
+    const sample = asRecord(rawSamples[index]);
+    if (!sample) {
+      return { data: null, error: `samples[${index}] must be an object` };
+    }
+
+    const sampleUnsupportedKeys = findUnsupportedKeys(sample, ['name', 'batch']);
+    if (sampleUnsupportedKeys.length > 0) {
+      return {
+        data: null,
+        error: `Unsupported fields in samples[${index}]: ${sampleUnsupportedKeys.join(', ')}`,
+      };
+    }
+
+    if (typeof sample.name !== 'string' || sample.name.trim().length === 0) {
+      return { data: null, error: `samples[${index}].name must be a non-empty string` };
+    }
+    if (typeof sample.batch !== 'string' || sample.batch.trim().length === 0) {
+      return { data: null, error: `samples[${index}].batch must be a non-empty string` };
+    }
+
+    samples.push({
+      name: sample.name.trim(),
+      batch: sample.batch.trim(),
+    });
+  }
+
+  const selectedMethodsRecord = asRecord(rawSelectedMethods);
+  if (!selectedMethodsRecord) {
+    return { data: null, error: 'selectedMethods must be an object' };
+  }
+
+  const selectedMethodsUnsupportedKeys = findUnsupportedKeys(
+    selectedMethodsRecord,
+    RUN_SELECTED_METHODS_KEYS
+  );
+  if (selectedMethodsUnsupportedKeys.length > 0) {
+    return {
+      data: null,
+      error: `Unsupported fields in selectedMethods: ${selectedMethodsUnsupportedKeys.join(', ')}`,
+    };
+  }
+
+  for (const key of RUN_SELECTED_METHODS_KEYS) {
+    if (typeof selectedMethodsRecord[key] !== 'boolean') {
+      return { data: null, error: `selectedMethods.${key} must be boolean` };
+    }
+  }
+
+  const selectedMethods: ProjectRunConfigPayload['selectedMethods'] = {
+    edgeR: selectedMethodsRecord.edgeR as boolean,
+    limma: selectedMethodsRecord.limma as boolean,
+    noiseq: selectedMethodsRecord.noiseq as boolean,
+    deseq2: selectedMethodsRecord.deseq2 as boolean,
+    dataAnalysis: selectedMethodsRecord.dataAnalysis as boolean,
+    integrationResults: selectedMethodsRecord.integrationResults as boolean,
+  };
+
+  if (!Array.isArray(rawComparisons)) {
+    return { data: null, error: 'comparisons must be an array' };
+  }
+
+  const comparisons: ProjectRunConfigPayload['comparisons'] = [];
+  for (let index = 0; index < rawComparisons.length; index += 1) {
+    const comparison = asRecord(rawComparisons[index]);
+    if (!comparison) {
+      return { data: null, error: `comparisons[${index}] must be an object` };
+    }
+
+    const comparisonUnsupportedKeys = findUnsupportedKeys(comparison, RUN_COMPARISON_KEYS);
+    if (comparisonUnsupportedKeys.length > 0) {
+      return {
+        data: null,
+        error: `Unsupported fields in comparisons[${index}]: ${comparisonUnsupportedKeys.join(', ')}`,
+      };
+    }
+
+    if (typeof comparison.base !== 'string' || comparison.base.trim().length === 0) {
+      return { data: null, error: `comparisons[${index}].base must be a non-empty string` };
+    }
+    if (typeof comparison.target !== 'string' || comparison.target.trim().length === 0) {
+      return { data: null, error: `comparisons[${index}].target must be a non-empty string` };
+    }
+    if (typeof comparison.selected !== 'boolean') {
+      return { data: null, error: `comparisons[${index}].selected must be boolean` };
+    }
+
+    comparisons.push({
+      base: comparison.base.trim(),
+      target: comparison.target.trim(),
+      selected: comparison.selected,
+    });
+  }
+
+  const parametersRecord = asRecord(rawParameters);
+  if (!parametersRecord) {
+    return { data: null, error: 'parameters must be an object' };
+  }
+
+  const parametersUnsupportedKeys = findUnsupportedKeys(parametersRecord, RUN_PARAMETERS_KEYS);
+  if (parametersUnsupportedKeys.length > 0) {
+    return {
+      data: null,
+      error: `Unsupported fields in parameters: ${parametersUnsupportedKeys.join(', ')}`,
+    };
+  }
+
+  if (typeof parametersRecord.fdr !== 'string' || parametersRecord.fdr.trim().length === 0) {
+    return { data: null, error: 'parameters.fdr must be a non-empty string' };
+  }
+  if (typeof parametersRecord.logFC !== 'string' || parametersRecord.logFC.trim().length === 0) {
+    return { data: null, error: 'parameters.logFC must be a non-empty string' };
+  }
+  if (typeof parametersRecord.cpm !== 'string' || parametersRecord.cpm.trim().length === 0) {
+    return { data: null, error: 'parameters.cpm must be a non-empty string' };
+  }
+  if (typeof parametersRecord.top !== 'boolean') {
+    return { data: null, error: 'parameters.top must be boolean' };
+  }
+  if (typeof parametersRecord.corrplot !== 'boolean') {
+    return { data: null, error: 'parameters.corrplot must be boolean' };
+  }
+
+  return {
+    data: {
+      samples,
+      selectedMethods,
+      comparisons,
+      parameters: {
+        fdr: parametersRecord.fdr.trim(),
+        logFC: parametersRecord.logFC.trim(),
+        cpm: parametersRecord.cpm.trim(),
+        top: parametersRecord.top,
+        corrplot: parametersRecord.corrplot,
+      },
+    },
+  };
 };
 
 const buildBatchFromSamples = (samples: FrontSampleLike[]): string | null => {
@@ -389,155 +513,6 @@ const buildBatchFromSamples = (samples: FrontSampleLike[]): string | null => {
   }
 
   return values.join(',');
-};
-
-/**
- * Convierte el formato compacto de métodos (por ejemplo `123`) a `selectedMethods`.
- */
-const buildSelectedMethodsFromDigits = (
-  methods: string
-): ProjectRunConfigPayload['selectedMethods'] => {
-  return {
-    edgeR: methods.includes('1'),
-    limma: methods.includes('2'),
-    noiseq: methods.includes('3'),
-    deseq2: methods.includes('4'),
-    dataAnalysis: methods.includes('5'),
-    integrationResults: methods.includes('6'),
-  };
-};
-
-/**
- * Normaliza el payload de `run` al snapshot que se persiste en `projects`.
- * Se guarda exactamente la configuración usada para la corrida.
- */
-const normalizeRunProjectPayload = (
-  payload: Record<string, unknown>,
-  runParams: AnalysisRunParams
-): ProjectRunConfigPayload => {
-  const body = payload as AnalysisRunPayloadLike;
-  const rawSamples = parseJsonIfNeeded(body.samples);
-  const rawComparisons = parseJsonIfNeeded(body.comparisons);
-  const rawSelectedMethods = parseJsonIfNeeded(body.selectedMethods);
-  const rawParameters = parseJsonIfNeeded(body.parameters);
-
-  const samples = Array.isArray(rawSamples)
-    ? (rawSamples as FrontSampleLike[])
-        .filter((row) => row && typeof row === 'object')
-        .map((row) => ({
-          name: typeof row.name === 'string' ? row.name.trim() : '',
-          batch: row.batch === undefined || row.batch === null ? '' : String(row.batch).trim(),
-        }))
-        .filter((row) => row.name.length > 0)
-    : [];
-
-  const comparisons = Array.isArray(rawComparisons)
-    ? (rawComparisons as FrontComparisonLike[])
-        .filter((row) => row && typeof row === 'object')
-        .map((row) => ({
-          base: typeof row.base === 'string' ? row.base.trim() : '',
-          target: typeof row.target === 'string' ? row.target.trim() : '',
-          selected: row.selected === undefined ? Boolean(row.isCustom) : Boolean(row.selected),
-        }))
-        .filter((row) => row.base.length > 0 && row.target.length > 0)
-    : [];
-
-  let selectedMethods: ProjectRunConfigPayload['selectedMethods'] = buildSelectedMethodsFromDigits(
-    runParams.methods
-  );
-
-  if (rawSelectedMethods && typeof rawSelectedMethods === 'object' && !Array.isArray(rawSelectedMethods)) {
-    selectedMethods = {
-      edgeR: Boolean((rawSelectedMethods as FrontMethodsSelectionLike).edgeR),
-      limma: Boolean((rawSelectedMethods as FrontMethodsSelectionLike).limma),
-      noiseq: Boolean((rawSelectedMethods as FrontMethodsSelectionLike).noiseq),
-      deseq2: Boolean((rawSelectedMethods as FrontMethodsSelectionLike).deseq2),
-      dataAnalysis: Boolean((rawSelectedMethods as FrontMethodsSelectionLike).dataAnalysis),
-      integrationResults: Boolean((rawSelectedMethods as FrontMethodsSelectionLike).integrationResults),
-    };
-  }
-
-  const corrplot =
-    rawParameters && typeof rawParameters === 'object' && !Array.isArray(rawParameters)
-      ? Boolean((rawParameters as FrontAnalysisParametersLike).corrplot)
-      : false;
-
-  return {
-    samples,
-    selectedMethods,
-    comparisons,
-    parameters: {
-      fdr: String(runParams.padjust),
-      logFC: String(runParams.logfc),
-      cpm: String(runParams.cpm),
-      top: runParams.top,
-      corrplot,
-    },
-  };
-};
-
-/**
- * Adapta payloads del frontend (ProjectRequest/Project) al formato legacy del backend.
- * Soporta ambos estilos para mantener compatibilidad en clientes existentes.
- */
-const adaptRunPayloadFromFrontend = (
-  payload: Record<string, unknown>
-): AnalysisRunPayloadLike => {
-  const body = payload as AnalysisRunPayloadLike;
-  const adapted: AnalysisRunPayloadLike = {
-    methods: typeof body.methods === 'string' ? body.methods : undefined,
-    logfc: body.logfc,
-    cpm: body.cpm,
-    padjust: body.padjust,
-    batch: body.batch,
-    generateZip: body.generateZip,
-    top: body.top,
-  };
-
-  // Prioridad 1: arreglo de métodos detallado (ProjectRequest.methods).
-  if ((!adapted.methods || adapted.methods === '') && Array.isArray(body.methods)) {
-    adapted.methods = buildMethodsFromMethodArray(body.methods as FrontMethodLike[]);
-  }
-
-  // Prioridad 2: selección booleana (Project.selectedMethods).
-  if (
-    (!adapted.methods || adapted.methods === '') &&
-    body.selectedMethods &&
-    typeof body.selectedMethods === 'object'
-  ) {
-    adapted.methods = buildMethodsFromSelectionObject(body.selectedMethods as FrontMethodsSelectionLike);
-  }
-
-  if (body.parameters && typeof body.parameters === 'object') {
-    const parameters = body.parameters as FrontAnalysisParametersLike;
-
-    // Mapea nombres de contrato frontend a nombres internos legacy.
-    if (adapted.padjust === undefined) {
-      adapted.padjust = parameters.fdr ?? parameters.padjust;
-    }
-    if (adapted.logfc === undefined) {
-      adapted.logfc = parameters.logFC ?? parameters.logfc;
-    }
-    if (adapted.cpm === undefined) {
-      adapted.cpm = parameters.cpm;
-    }
-    if (adapted.top === undefined) {
-      adapted.top = parameters.top;
-    }
-    if (adapted.generateZip === undefined) {
-      adapted.generateZip = parameters.generateZip;
-    }
-  }
-
-  // Si el cliente no mandó `batch` directo, se deriva desde `samples[].batch`.
-  if (
-    (adapted.batch === undefined || adapted.batch === null || adapted.batch === '') &&
-    Array.isArray(body.samples)
-  ) {
-    adapted.batch = buildBatchFromSamples(body.samples as FrontSampleLike[]);
-  }
-
-  return adapted;
 };
 
 /**
@@ -867,141 +842,80 @@ const findFailureInRunSummaryLog = (outputDir: string): string | null => {
 
 /**
  * Valida y normaliza payload de ejecución:
- * - aplica defaults,
- * - verifica rangos numéricos,
- * - compacta métodos,
- * - valida batch y flags booleanos.
+ * - acepta solo formato Project estricto,
+ * - rechaza llaves extra,
+ * - valida tipos y rangos numéricos,
+ * - traduce a parámetros internos para script R.
  */
-const normalizeRunParams = (
+const normalizeRunRequest = (
   payload: Record<string, unknown>
-): { params: AnalysisRunParams | null; error?: string } => {
-  // Acepta payload nuevo del frontend y payload legacy ya soportado por el backend.
-  const adaptedPayload = adaptRunPayloadFromFrontend(payload);
-  const rawPayload = payload as AnalysisRunPayloadLike;
-  // Si el cliente intentó enviar métodos pero ninguno pudo mapearse, se rechaza explícitamente.
-  const methodsProvided =
-    typeof rawPayload.methods === 'string' ||
-    Array.isArray(rawPayload.methods) ||
-    rawPayload.selectedMethods !== undefined;
+): { data: { runParams: AnalysisRunParams; runPayload: ProjectRunConfigPayload } | null; error?: string } => {
+  const normalizedPayload = normalizeRunProjectPayload(payload);
+  if (!normalizedPayload.data) {
+    return { data: null, error: normalizedPayload.error || 'Invalid run payload' };
+  }
 
-  if (
-    methodsProvided &&
-    (typeof adaptedPayload.methods !== 'string' || adaptedPayload.methods.trim().length === 0)
-  ) {
+  const runPayload = normalizedPayload.data;
+  const methods = buildMethodsFromSelectionObject(runPayload.selectedMethods);
+
+  if (!methods) {
     return {
-      params: null,
-      error:
-        'No valid methods were mapped from payload. Verify methods[].name or selectedMethods fields.',
+      data: null,
+      error: 'selectedMethods must activate at least one method',
     };
   }
 
-  const methodsInput =
-    typeof adaptedPayload.methods === 'string' && adaptedPayload.methods.trim().length > 0
-      ? adaptedPayload.methods.trim()
-      : '';
-
-  if (!methodsInput) {
-    return { params: null, error: 'methods is required and cannot be empty' };
-  }
-
-  // Solo se permite el alfabeto de métodos conocido por el backend (1..6).
-  if (!/^[1-6]+$/.test(methodsInput)) {
-    return { params: null, error: 'methods must contain digits from 1 to 6 only' };
-  }
-
-  // Elimina duplicados preservando orden de selección.
-  const methods = Array.from(new Set(methodsInput.split(''))).join('');
   const hasAnyRunnableMethod = /[1-5]/.test(methods);
   if (!hasAnyRunnableMethod) {
-    return { params: null, error: 'methods must include at least one method from 1 to 5' };
+    return { data: null, error: 'selectedMethods must include at least one method from 1 to 5' };
   }
 
   if (methods.includes('6') && !/[1-4]/.test(methods)) {
-    return { params: null, error: 'method 6 (integration) requires at least one DE method (1-4)' };
+    return {
+      data: null,
+      error: 'selectedMethods.integrationResults requires at least one DE method from selectedMethods (edgeR, limma, noiseq or deseq2)',
+    };
   }
 
-  // Convierte entrada flexible a números y valida límites operativos.
-  const logfcRaw = adaptedPayload.logfc;
-  const cpmRaw = adaptedPayload.cpm;
-  const padjustRaw = adaptedPayload.padjust;
-
-  // Modo estricto: sin estos tres valores no se inicia ejecución.
-  if (logfcRaw === undefined || logfcRaw === null || String(logfcRaw).trim() === '') {
-    return { params: null, error: 'logfc is required' };
-  }
-  if (cpmRaw === undefined || cpmRaw === null || String(cpmRaw).trim() === '') {
-    return { params: null, error: 'cpm is required' };
-  }
-  if (padjustRaw === undefined || padjustRaw === null || String(padjustRaw).trim() === '') {
-    return { params: null, error: 'padjust is required' };
-  }
-
-  const logfc = Number(logfcRaw);
-  const cpm = Number(cpmRaw);
-  const padjust = Number(padjustRaw);
+  const logfc = Number(runPayload.parameters.logFC);
+  const cpm = Number(runPayload.parameters.cpm);
+  const padjust = Number(runPayload.parameters.fdr);
 
   if (!Number.isFinite(logfc) || logfc <= 0) {
-    return { params: null, error: 'logfc must be a number greater than 0' };
+    return { data: null, error: 'parameters.logFC must be a number greater than 0' };
   }
   if (!Number.isFinite(cpm) || cpm <= 0) {
-    return { params: null, error: 'cpm must be a number greater than 0' };
+    return { data: null, error: 'parameters.cpm must be a number greater than 0' };
   }
   if (!Number.isFinite(padjust) || padjust <= 0 || padjust >= 1) {
-    return { params: null, error: 'padjust must be a number between 0 and 1' };
+    return { data: null, error: 'parameters.fdr must be a number between 0 and 1' };
   }
 
-  if (
-    adaptedPayload.batch === undefined ||
-    adaptedPayload.batch === null ||
-    adaptedPayload.batch === ''
-  ) {
-    return { params: null, error: 'batch is required' };
-  }
+  const normalizedBatch = buildBatchFromSamples(runPayload.samples as FrontSampleLike[]);
 
-  if (typeof adaptedPayload.batch !== 'string') {
-    return { params: null, error: 'batch must be a comma-separated numeric list' };
-  }
-
-  const normalizedBatch = adaptedPayload.batch
-    .split(',')
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0)
-    .join(',');
-
-  if (normalizedBatch.length === 0) {
-    return { params: null, error: 'batch is required' };
+  if (!normalizedBatch || normalizedBatch.length === 0) {
+    return { data: null, error: 'samples.batch is required to build batch vector' };
   }
 
   if (!/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?)*$/.test(normalizedBatch)) {
-    return { params: null, error: 'batch must be a comma-separated numeric list' };
+    return {
+      data: null,
+      error: 'samples.batch must be a comma-separated numeric list',
+    };
   }
 
-  // En este backend, `generateZip` no viene en clases del frontend y se fija en true.
-  const generateZip =
-    adaptedPayload.generateZip === undefined
-      ? true
-      : parseBooleanField(adaptedPayload.generateZip);
-
-  if (generateZip === null) {
-    return { params: null, error: 'generateZip must be boolean' };
-  }
-
-  const top = parseBooleanField(adaptedPayload.top);
-  if (top === null) {
-    // `top` gobierna bloques de salida en el reporte; se exige explícitamente.
-    return { params: null, error: 'top is required and must be boolean' };
-  }
-
-  // Contrato final normalizado listo para persistir en DB y ejecutar script R.
   return {
-    params: {
-      methods,
-      logfc,
-      cpm,
-      padjust,
-      batch: normalizedBatch,
-      generateZip,
-      top,
+    data: {
+      runPayload,
+      runParams: {
+        methods,
+        logfc,
+        cpm,
+        padjust,
+        batch: normalizedBatch,
+        generateZip: true,
+        top: runPayload.parameters.top as boolean,
+      },
     },
   };
 };
@@ -1365,11 +1279,13 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
     }
 
     // Normaliza body para un contrato estable hacia el ejecutor.
-    const parsed = normalizeRunParams((req.body || {}) as Record<string, unknown>);
-    if (!parsed.params) {
+    const parsed = normalizeRunRequest((req.body || {}) as Record<string, unknown>);
+    if (!parsed.data) {
       sendErrorResponse(res, parsed.error || 'Invalid analysis parameters', null, 400);
       return;
     }
+    const runParams = parsed.data.runParams;
+    const runProjectPayload = parsed.data.runPayload;
 
     const basePath = getProjectsBasePath();
     const inputPath = resolveProjectAbsolutePath(basePath, project.path);
@@ -1384,7 +1300,7 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
     }
 
     // Valida consistencia del encabezado de la tabla respecto a métodos y batch.
-    const sampleValidation = validateSampleNamesAndBatch(inputPath, parsed.params);
+    const sampleValidation = validateSampleNamesAndBatch(inputPath, runParams);
     if (!sampleValidation.ok) {
       sendErrorResponse(res, sampleValidation.error, null, 400);
       return;
@@ -1395,7 +1311,7 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
     const runtimeBuild = buildAnalysisRuntimeCommand({
       inputPath,
       outputDir,
-      runParams: parsed.params,
+      runParams,
     });
     if (!runtimeBuild.runtime) {
       sendErrorResponse(
@@ -1408,10 +1324,6 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
     }
 
     // Persiste snapshot de corrida y bloquea proyecto de forma atómica.
-    const runProjectPayload = normalizeRunProjectPayload(
-      (req.body || {}) as Record<string, unknown>,
-      parsed.params
-    );
     const locked = await lockProjectForRun(projectId, user.id_user, runProjectPayload);
 
     if (!locked) {

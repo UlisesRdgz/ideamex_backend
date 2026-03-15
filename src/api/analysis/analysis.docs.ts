@@ -70,117 +70,103 @@
  *       content:
  *         application/json:
  *           schema:
- *             oneOf:
- *               - type: object
- *                 description: Formato legacy del backend
+ *             type: object
+ *             required:
+ *               - samples
+ *               - selectedMethods
+ *               - comparisons
+ *               - parameters
+ *             additionalProperties: false
+ *             properties:
+ *               samples:
+ *                 type: array
+ *                 minItems: 1
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - name
+ *                     - batch
+ *                   additionalProperties: false
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                       example: mock_3
+ *                     batch:
+ *                       type: string
+ *                       example: "0"
+ *               selectedMethods:
+ *                 type: object
  *                 required:
- *                   - methods
- *                   - logfc
- *                   - cpm
- *                   - padjust
- *                   - batch
- *                   - top
+ *                   - edgeR
+ *                   - limma
+ *                   - noiseq
+ *                   - deseq2
+ *                   - dataAnalysis
+ *                   - integrationResults
+ *                 additionalProperties: false
  *                 properties:
- *                   methods:
- *                     type: string
- *                     example: "123456"
- *                     description: Debe incluir al menos un método de 1-5. Si incluye 6, también debe incluir 1-4.
- *                   logfc:
- *                     type: number
- *                     example: 1
- *                   cpm:
- *                     type: number
- *                     example: 1
- *                   padjust:
- *                     type: number
- *                     example: 0.01
- *                   batch:
- *                     type: string
- *                     example: "0,0,5,1"
- *                     description: Lista numérica separada por comas con el mismo número de elementos que muestras.
- *                   generateZip:
+ *                   edgeR:
  *                     type: boolean
  *                     example: true
+ *                   limma:
+ *                     type: boolean
+ *                     example: true
+ *                   noiseq:
+ *                     type: boolean
+ *                     example: false
+ *                   deseq2:
+ *                     type: boolean
+ *                     example: false
+ *                   dataAnalysis:
+ *                     type: boolean
+ *                     example: false
+ *                   integrationResults:
+ *                     type: boolean
+ *                     example: false
+ *               comparisons:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - base
+ *                     - target
+ *                     - selected
+ *                   additionalProperties: false
+ *                   properties:
+ *                     base:
+ *                       type: string
+ *                       example: mock
+ *                     target:
+ *                       type: string
+ *                       example: hrcc
+ *                     selected:
+ *                       type: boolean
+ *                       example: false
+ *               parameters:
+ *                 type: object
+ *                 required:
+ *                   - fdr
+ *                   - logFC
+ *                   - cpm
+ *                   - top
+ *                   - corrplot
+ *                 additionalProperties: false
+ *                 properties:
+ *                   fdr:
+ *                     type: string
+ *                     example: "0.01"
+ *                   logFC:
+ *                     type: string
+ *                     example: "1"
+ *                   cpm:
+ *                     type: string
+ *                     example: "1"
  *                   top:
  *                     type: boolean
  *                     example: true
- *               - type: object
- *                 description: Formato frontend ProjectRequest/Project (mapeado automáticamente)
- *                 required:
- *                   - samples
- *                   - comparisons
- *                   - parameters
- *                 properties:
- *                   methods:
- *                     type: array
- *                     items:
- *                       type: object
- *                       properties:
- *                         name:
- *                           type: string
- *                           example: "edgeR"
- *                         isSelected:
- *                           type: boolean
- *                           example: true
- *                   selectedMethods:
- *                     type: object
- *                     properties:
- *                       edgeR:
- *                         type: boolean
- *                       limma:
- *                         type: boolean
- *                       noiseq:
- *                         type: boolean
- *                       deseq2:
- *                         type: boolean
- *                       dataAnalysis:
- *                         type: boolean
- *                       integrationResults:
- *                         type: boolean
- *                   samples:
- *                     type: array
- *                     items:
- *                       type: object
- *                       properties:
- *                         name:
- *                           type: string
- *                         batch:
- *                           type: string
- *                   comparisons:
- *                     type: array
- *                     items:
- *                       type: object
- *                       properties:
- *                         base:
- *                           type: string
- *                         target:
- *                           type: string
- *                         isCustom:
- *                           type: boolean
- *                   parameters:
- *                     type: object
- *                     required:
- *                       - fdr
- *                       - logFC
- *                       - cpm
- *                       - top
- *                       - corrplot
- *                     properties:
- *                       fdr:
- *                         type: string
- *                         example: "0.01"
- *                       logFC:
- *                         type: string
- *                         example: "1"
- *                       cpm:
- *                         type: string
- *                         example: "1"
- *                       top:
- *                         type: boolean
- *                         example: true
- *                       corrplot:
- *                         type: boolean
- *                         example: false
+ *                   corrplot:
+ *                     type: boolean
+ *                     example: false
  *     responses:
  *       202:
  *         description: Corrida iniciada correctamente

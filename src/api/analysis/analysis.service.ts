@@ -9,7 +9,13 @@
  */
 
 import { pool } from '../../config/db';
-import { ProjectRecord, type Project, type ProjectStatus } from '../../models/Project';
+import {
+  ProjectRecord,
+  type Project,
+  type ProjectRow,
+  type ProjectStatus,
+} from '../../models/Project';
+import { mapProjectRowToRecord } from '../../models/ProjectMapper';
 
 /**
  * Parámetros normalizados que el backend envía al motor de análisis en R.
@@ -166,7 +172,7 @@ export const getProjectsByUser = async (id_user: number): Promise<Project[]> => 
   const conn = await pool.getConnection();
   try {
     const rows = await conn.query(query, [id_user]);
-    return rows.map((row: any) => ProjectRecord.fromDatabaseRow(row).toProject());
+    return rows.map((row: any) => mapProjectRowToRecord(row as ProjectRow).toProject());
   } finally {
     conn.release();
   }
@@ -223,7 +229,7 @@ export const getProjectById = async (
       [id_project, id_user]
     );
 
-    return rows[0] ? ProjectRecord.fromDatabaseRow(rows[0]) : null;
+    return rows[0] ? mapProjectRowToRecord(rows[0] as ProjectRow) : null;
   } finally {
     conn.release();
   }
