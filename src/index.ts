@@ -55,8 +55,15 @@ if (appConfig.env !== 'production') {
 
 // Configuración de Swagger (documentación protegida con auth)
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
+const docsPath = `${appConfig.basePath}docs`;
+
+// Evita que reverse proxies pierdan prefijos (/ideamex2/api) cuando falta slash final.
+app.get(docsPath, swaggerAuth, (req: Request, res: Response) => {
+  res.redirect(301, './docs/');
+});
+
 app.use(
-  `${appConfig.basePath}docs`,
+  docsPath,
   swaggerAuth,
   swaggerUi.serve,
   swaggerUi.setup(swaggerSpec)
