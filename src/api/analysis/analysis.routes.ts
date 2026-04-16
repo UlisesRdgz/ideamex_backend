@@ -18,6 +18,7 @@ import {
   handleDeleteProject,
   handleRunProjectAnalysis,
   handleGetProjectResults,
+  handleDownloadProjectResultsArchive,
   handleGetProjectResultFile,
 } from './analysis.controller';
 import { uploadProject } from '../../config/multer';
@@ -91,6 +92,19 @@ router.get(
   validateProjectIdParam,
   validateRequest,
   handleGetProjectResults
+);
+
+/**
+ * @route GET /analysis/project/:projectId/results/archive
+ * @desc Descarga todos los resultados en un único archivo comprimido
+ * @access Privado (requiere autenticación Bearer)
+ */
+router.get(
+  '/project/:projectId/results/archive',
+  requireUser,
+  validateProjectIdParam,
+  validateRequest,
+  handleDownloadProjectResultsArchive
 );
 
 /**

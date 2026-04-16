@@ -21,10 +21,11 @@ import swaggerJsdoc from 'swagger-jsdoc';
 
 import { appConfig } from './config/appConfig';
 import { checkDatabaseConnection } from './config/db';
+import { checkEmailConnection } from './config/email';
 import swaggerOptions from './config/swagger';
 
 import { swaggerAuth } from './middlewares/swaggerAuth.middleware';
-import { sendErrorResponse } from './utils/response';
+import { sendErrorResponse, sendSuccessResponse } from './utils/response';
 
 import authRoutes from './api/auth/auth.routes';
 import contactRoutes from './api/contact/contact.routes';
@@ -51,10 +52,6 @@ app.use(cors());
 if (appConfig.env !== 'production') {
   app.use(morgan('dev'));
 }
-
-// Verificación de conexión a la base de datos
-// Se ejecuta al arranque para fallar rápido si DB no está disponible.
-checkDatabaseConnection();
 
 // Configuración de Swagger (documentación protegida con auth)
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
@@ -89,7 +86,7 @@ app.use(`${appConfig.basePath}analysis`, analysisRoutes);
 
 // Ruta base
 app.get(appConfig.basePath, (req: Request, res: Response) => {
-  res.json({ message: `Bienvenido a la API de ${appConfig.appName}` });
+  sendSuccessResponse(res, `Bienvenido a la API de ${appConfig.appName}`, null, 200);
 });
 
 // Manejador global de errores
@@ -126,17 +123,34 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 // Inicio del servidor
-app.listen(appConfig.port, '0.0.0.0', () => {
-  console.log(
-    `[SERVER] API interna escuchando en http://0.0.0.0:${appConfig.port}${appConfig.basePath}`
-  );
+const startServer = (): void => {
+  const localBaseUrl = `http://127.0.0.1:${appConfig.port}${appConfig.basePath}`;
+  const internalBaseUrl = `http://0.0.0.0:${appConfig.port}${appConfig.basePath}`;
+  const publicBaseUrl = appConfig.publicApiUrl;
 
-  // Ruta pública real (con prefijo que NGINX expone)
-  console.log(
-    `[NGINX] API pública disponible en https://iauusmb.ibt.unam.mx/ideamex2/api/`
-  );
+  app.listen(appConfig.port, '0.0.0.0', () => {
+    console.log('====================================================');
+    console.log(`[SERVER] API interna escuchando en ${internalBaseUrl}`);
+    console.log(`[DOCS]   Swagger local disponible en ${localBaseUrl}docs`);
+    console.log(`[PUBLIC] API pública disponible en ${publicBaseUrl}`);
+    console.log(`[DOCS]   Swagger público disponible en ${publicBaseUrl}docs`);
+    console.log('====================================================');
+  });
+};
 
-  console.log(
-    `[DOCS] Swagger público disponible en https://iauusmb.ibt.unam.mx/ideamex2/api/docs`
-  );
-});
+const bootstrap = async (): Promise<void> => {
+  try {
+    await checkDatabaseConnection();
+    console.log('[DB] Conexión exitosa a MariaDB');
+
+    await checkEmailConnection();
+    console.log('[EMAIL] Servidor de correo listo para enviar mensajes.');
+
+    startServer();
+  } catch (error) {
+    console.error('[BOOT] Error al iniciar la aplicación:', error);
+    process.exit(1);
+  }
+};
+
+bootstrap();

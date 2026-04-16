@@ -23,7 +23,7 @@ Antes de ejecutar el proyecto crea un archivo `.env` en la raíz con, al menos, 
 | --- | --- | --- |
 | `NODE_ENV` | Entorno de ejecución (`development`, `production`, etc.) | `development` |
 | `PORT` | Puerto HTTP del servidor | `3000` |
-| `BASE_PATH` | Prefijo base para las rutas de la API | `/api` |
+| `PUBLIC_API_URL` | URL pública base de la API (sin rutas extra) | `https://iauusmb.ibt.unam.mx/ideamex2/api/` |
 | `JWT_SECRET` | Clave para firmar y verificar JWT | `defaultsecret` *(no recomendado)* |
 | `DB_HOST` | Host del servidor MariaDB | `127.0.0.1` |
 | `DB_USER` | Usuario de la base de datos | `root` |
@@ -61,7 +61,7 @@ Con la base de datos corriendo y la configuración lista:
 npm run dev
 ```
 
-El servidor se iniciará escuchando en `http://localhost:<PORT><BASE_PATH>`. La documentación Swagger queda disponible (tras autenticación básica) en `http://localhost:<PORT><BASE_PATH>/docs`.
+El servidor se iniciará escuchando en `http://localhost:<PORT>/`. La documentación Swagger queda disponible (tras autenticación básica) en `http://localhost:<PORT>/docs`.
 
 Los archivos cargados mediante el módulo de análisis se almacenan en la ruta indicada por `PROJECTS_BASE_PATH`; si no la defines, se usará la carpeta `projects` en la raíz del proyecto.
 
@@ -146,4 +146,4 @@ Si el token es válido para tu `GOOGLE_CLIENT_ID`, la API responderá con el JWT
 
 - **Error de conexión a la base de datos**: revisa credenciales en `.env` y que el servicio MariaDB esté en ejecución.
 - **Errores al subir archivos**: valida que `PROJECTS_BASE_PATH` apunte a un directorio existente y con permisos de escritura.
-- **No carga la documentación Swagger**: confirma que las credenciales básicas (`SWAGGER_USER`, `SWAGGER_PASSWORD`) coinciden y que el prefijo `BASE_PATH` sea el mismo que usas en la URL.
+- **No carga la documentación Swagger**: confirma que las credenciales básicas (`SWAGGER_USER`, `SWAGGER_PASSWORD`) coinciden y que accedes a `http://localhost:<PORT>/docs`.
