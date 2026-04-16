@@ -57,9 +57,13 @@ if (appConfig.env !== 'production') {
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 const docsPath = `${appConfig.basePath}docs`;
 
-// Evita que reverse proxies pierdan prefijos (/ideamex2/api) cuando falta slash final.
-app.get(docsPath, swaggerAuth, (req: Request, res: Response) => {
-  res.redirect(301, './docs/');
+// Canonicaliza /docs -> /docs/ con redirección relativa, sin romper prefijos en reverse proxy.
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.path === docsPath && !req.originalUrl.endsWith('/')) {
+    res.redirect(301, 'docs/');
+    return;
+  }
+  next();
 });
 
 app.use(
