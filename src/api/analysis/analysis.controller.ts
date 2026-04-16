@@ -58,6 +58,7 @@ const RESULT_IMAGE_EXTENSION_ALLOWLIST = new Set([
   '.svg',
   '.pdf',
 ]);
+const RESULT_IMAGE_PDF_EXTENSION = '.pdf';
 const RESULT_ARCHIVE_ZIP_NAME = 'DiffExpAllResults.zip';
 const RESULT_ARCHIVE_TAR_GZ_NAME = 'DiffExpAllResults.tar.gz';
 const MIME_BY_EXTENSION: Record<string, string> = {
@@ -674,10 +675,10 @@ const scoreResultImageCandidate = (fileName: string): number => {
   const normalized = fileName.toLowerCase();
 
   const keywordScores: Array<{ pattern: RegExp; score: number }> = [
-    { pattern: /mds/, score: 100 },
-    { pattern: /volcano/, score: 95 },
-    { pattern: /heatmap/, score: 90 },
-    { pattern: /pca|pc-?a/, score: 85 },
+    { pattern: /volcano/, score: 100 },
+    { pattern: /heatmap/, score: 95 },
+    { pattern: /pca|pc-?a/, score: 90 },
+    { pattern: /mds/, score: 85 },
     { pattern: /corrplot|correlation/, score: 80 },
     { pattern: /ma[-_ ]?plot|maplot/, score: 75 },
     { pattern: /boxplot|box[-_ ]?plot/, score: 70 },
@@ -698,10 +699,23 @@ const scoreResultImageCandidate = (fileName: string): number => {
  * Selecciona una imagen candidata para `image_url` dentro de la carpeta de resultados.
  * Devuelve la ruta relativa al directorio de resultados.
  */
-const selectProjectCoverImageFromResults = (resultDir: string): string | null => {
+const selectProjectCoverImageFromResults = (
+  resultDir: string,
+  options?: { includePdf?: boolean }
+): string | null => {
+  const includePdf = options?.includePdf ?? true;
   const files = listProjectResultFiles(resultDir);
   const candidates: ProjectCoverCandidate[] = files
-    .filter((file) => RESULT_IMAGE_EXTENSION_ALLOWLIST.has(path.extname(file.name).toLowerCase()))
+    .filter((file) => {
+      const extension = path.extname(file.name).toLowerCase();
+      if (!RESULT_IMAGE_EXTENSION_ALLOWLIST.has(extension)) {
+        return false;
+      }
+      if (!includePdf && extension === RESULT_IMAGE_PDF_EXTENSION) {
+        return false;
+      }
+      return true;
+    })
     .map((file) => ({
       name: file.name,
       score: scoreResultImageCandidate(file.name),
@@ -722,13 +736,79 @@ const selectProjectCoverImageFromResults = (resultDir: string): string | null =>
 };
 
 /**
+ * Intenta convertir la primera página de un PDF de resultados a PNG para portada.
+ * Regresa la ruta relativa (a `resultDir`) del PNG generado.
+ */
+const tryGenerateCoverPreviewFromPdf = (
+  resultDir: string,
+  relativePdfPath: string
+): string | null => {
+  if (path.extname(relativePdfPath).toLowerCase() !== RESULT_IMAGE_PDF_EXTENSION) {
+    return null;
+  }
+
+  const absolutePdfPath = resolveResultFilePath(resultDir, relativePdfPath);
+  if (!absolutePdfPath || !fs.existsSync(absolutePdfPath) || !fs.statSync(absolutePdfPath).isFile()) {
+    return null;
+  }
+
+  const pdfDir = path.dirname(absolutePdfPath);
+  const pdfBaseName = path.basename(absolutePdfPath, RESULT_IMAGE_PDF_EXTENSION);
+  const previewBaseName = pdfBaseName;
+  const previewBasePath = path.join(pdfDir, previewBaseName);
+  const previewPngPath = `${previewBasePath}.png`;
+
+  // Si ya existe preview, la reutiliza para evitar trabajo repetido.
+  if (fs.existsSync(previewPngPath) && fs.statSync(previewPngPath).isFile()) {
+    return toPosixPath(path.relative(resultDir, previewPngPath));
+  }
+
+  const pdftoppmBin = (process.env.ANALYSIS_PDFTOPPM_BIN || 'pdftoppm').trim() || 'pdftoppm';
+  const conversion = spawnSync(
+    pdftoppmBin,
+    ['-png', '-f', '1', '-singlefile', absolutePdfPath, previewBasePath],
+    {
+      encoding: 'utf-8',
+    }
+  );
+
+  if (conversion.error || conversion.status !== 0) {
+    const details = conversion.error?.message || conversion.stderr || conversion.stdout || '';
+    console.warn(
+      `[ANALYSIS] Unable to generate PNG preview with "${pdftoppmBin}" from "${relativePdfPath}": ${details.trim()}`
+    );
+    return null;
+  }
+
+  if (!fs.existsSync(previewPngPath) || !fs.statSync(previewPngPath).isFile()) {
+    return null;
+  }
+
+  return toPosixPath(path.relative(resultDir, previewPngPath));
+};
+
+/**
  * Resuelve la ruta relativa final para `image_url` del proyecto
  * (relativa a `PROJECTS_BASE_PATH`).
  */
 const resolveProjectCoverImagePath = (outputDir: string): string | null => {
-  const relativeImageFromResult = selectProjectCoverImageFromResults(outputDir);
+  let relativeImageFromResult = selectProjectCoverImageFromResults(outputDir);
   if (!relativeImageFromResult) {
     return null;
+  }
+
+  // Si la mejor portada es PDF, intenta generar PNG para compatibilidad de UI.
+  if (path.extname(relativeImageFromResult).toLowerCase() === RESULT_IMAGE_PDF_EXTENSION) {
+    const generatedPreview = tryGenerateCoverPreviewFromPdf(outputDir, relativeImageFromResult);
+    if (generatedPreview) {
+      relativeImageFromResult = generatedPreview;
+    } else {
+      // Fallback: usa la mejor imagen no-PDF disponible si existe.
+      const nonPdfCandidate = selectProjectCoverImageFromResults(outputDir, { includePdf: false });
+      if (nonPdfCandidate) {
+        relativeImageFromResult = nonPdfCandidate;
+      }
+    }
   }
 
   const projectsBasePath = getProjectsBasePath();
