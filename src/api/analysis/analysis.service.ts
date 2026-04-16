@@ -279,7 +279,8 @@ export const lockProjectForRun = async (
  */
 export const markProjectRunCompleted = async (
   id_project: number,
-  id_user: number
+  id_user: number,
+  imageUrl: string | null
 ): Promise<void> => {
   const conn = await pool.getConnection();
   try {
@@ -288,10 +289,11 @@ export const markProjectRunCompleted = async (
       UPDATE projects
       SET
         status = 'COMPLETED',
+        image_url = COALESCE(?, image_url),
         updated_at = NOW()
       WHERE id_project = ? AND user_id = ?
       `,
-      [id_project, id_user]
+      [imageUrl, id_project, id_user]
     );
   } finally {
     conn.release();

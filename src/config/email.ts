@@ -31,13 +31,9 @@ export const emailTransporter = nodemailer.createTransport({
 });
 
 /**
- * Verifica la conexión con el servidor SMTP al iniciar.
- * Lanza un error si la autenticación o conexión falla.
+ * Verifica la conexión con el servidor SMTP.
+ * Se usa desde el bootstrap de la app para mantener orden de logs.
  */
-emailTransporter.verify((error) => {
-    if (error) {
-        console.error('[EMAIL] Error al conectar con el servidor SMTP:', error);
-    } else {
-        console.log('[EMAIL] Servidor de correo listo para enviar mensajes.');
-    }
-});
+export const checkEmailConnection = async (): Promise<void> => {
+  await emailTransporter.verify();
+};

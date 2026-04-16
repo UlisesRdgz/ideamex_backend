@@ -1,14 +1,11 @@
 /**
  * @file Documentación Swagger del módulo de autenticación.
- * Define los esquemas y endpoints relacionados con login, registro, activación y recuperación de contraseña.
- * 
+ *
  * @module api/auth/auth.docs
  * @swagger
  * tags:
- *   name: Auth
- *   description: Endpoints relacionados con la autenticación de usuarios.
- * 
- * @auth Ulises Rodríguez García
+ *   - name: Auth
+ *     description: Registro, activación y autenticación de usuarios.
  */
 
 /**
@@ -17,63 +14,131 @@
  *   schemas:
  *     RegisterInput:
  *       type: object
- *       required:
- *         - email
- *         - username
- *         - password
- *         - confirmPassword
+ *       required: [email, username, password, confirmPassword]
  *       properties:
+ *         email:
+ *           type: string
+ *           format: email
+ *           example: user@example.com
+ *         username:
+ *           type: string
+ *           example: usuario_demo
+ *         password:
+ *           type: string
+ *           format: password
+ *           example: Segura@123
+ *         confirmPassword:
+ *           type: string
+ *           format: password
+ *           example: Segura@123
+ *       additionalProperties: false
+ *
+ *     LoginInput:
+ *       type: object
+ *       required: [email, password]
+ *       properties:
+ *         email:
+ *           type: string
+ *           format: email
+ *           example: user@example.com
+ *         password:
+ *           type: string
+ *           format: password
+ *           example: Segura@123
+ *       additionalProperties: false
+ *
+ *     GoogleLoginInput:
+ *       type: object
+ *       required: [idToken]
+ *       properties:
+ *         idToken:
+ *           type: string
+ *           description: Token ID generado por Google Sign-In en frontend.
+ *       additionalProperties: false
+ *
+ *     PasswordResetRequestInput:
+ *       type: object
+ *       required: [email]
+ *       properties:
+ *         email:
+ *           type: string
+ *           format: email
+ *           example: user@example.com
+ *       additionalProperties: false
+ *
+ *     PasswordResetInput:
+ *       type: object
+ *       required: [token, password, confirmPassword]
+ *       properties:
+ *         token:
+ *           type: string
+ *           description: Token de recuperación recibido por correo.
+ *         password:
+ *           type: string
+ *           format: password
+ *           example: NuevaSegura@123
+ *         confirmPassword:
+ *           type: string
+ *           format: password
+ *           example: NuevaSegura@123
+ *       additionalProperties: false
+ *
+ *     AuthSessionData:
+ *       type: object
+ *       required: [token, id, email, username]
+ *       properties:
+ *         token:
+ *           type: string
+ *           description: JWT de sesión.
+ *         id:
+ *           type: integer
+ *           example: 4
  *         email:
  *           type: string
  *           format: email
  *         username:
  *           type: string
- *         password:
+ *         auth_provider:
  *           type: string
- *         confirmPassword:
- *           type: string
+ *           enum: [local, google]
+ *           nullable: true
  *
- *     LoginInput:
+ *     BasicSuccessResponse:
  *       type: object
- *       required:
- *         - email
- *         - password
+ *       required: [status, message, data]
  *       properties:
- *         email:
+ *         status:
  *           type: string
- *         password:
+ *           enum: [success]
+ *         message:
  *           type: string
+ *         data:
+ *           nullable: true
+ *       example:
+ *         status: success
+ *         message: Account activated successfully
+ *         data: null
  *
- *     GoogleLoginInput:
+ *     AuthSuccessResponse:
  *       type: object
- *       required:
- *         - idToken
+ *       required: [status, message, data]
  *       properties:
- *         idToken:
+ *         status:
  *           type: string
- *           description: Token ID generado por Google Sign-In en el frontend.
- *
- *     PasswordResetRequest:
- *       type: object
- *       required:
- *         - email
- *       properties:
- *         email:
+ *           enum: [success]
+ *         message:
  *           type: string
- *
- *     PasswordReset:
- *       type: object
- *       required:
- *         - token
- *         - password
- *         - confirmPassword
- *       properties:
- *         token:
- *           type: string
- *         password:
- *           type: string
- *         confirmPassword:
- *           type: string
+ *         data:
+ *           $ref: '#/components/schemas/AuthSessionData'
+ *       example:
+ *         status: success
+ *         message: Login successful
+ *         data:
+ *           token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *           id: 4
+ *           email: user@example.com
+ *           username: usuario_demo
+ *           auth_provider: local
  */
 
 /**
@@ -81,7 +146,8 @@
  * /auth/register:
  *   post:
  *     tags: [Auth]
- *     summary: Registra un nuevo usuario
+ *     operationId: registerUser
+ *     summary: Registra un nuevo usuario local
  *     requestBody:
  *       required: true
  *       content:
@@ -90,9 +156,15 @@
  *             $ref: '#/components/schemas/RegisterInput'
  *     responses:
  *       201:
- *         description: Usuario registrado correctamente.
+ *         description: Usuario registrado y correo de activación enviado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BasicSuccessResponse'
  *       400:
- *         description: Datos inválidos o correo duplicado.
+ *         $ref: '#/components/responses/BadRequest'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
  */
 
 /**
@@ -100,21 +172,28 @@
  * /auth/activate:
  *   get:
  *     tags: [Auth]
- *     summary: Activa una cuenta de usuario mediante token
+ *     operationId: activateUser
+ *     summary: Activa una cuenta mediante token
  *     parameters:
  *       - in: query
  *         name: token
+ *         required: true
  *         schema:
  *           type: string
- *         required: true
- *         description: Token de activación recibido por correo
+ *         description: Token de activación enviado por correo.
  *     responses:
  *       200:
  *         description: Cuenta activada correctamente.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BasicSuccessResponse'
  *       400:
- *         description: Token inválido o ausente.
+ *         $ref: '#/components/responses/BadRequest'
  *       404:
- *         description: Usuario no encontrado.
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
  */
 
 /**
@@ -122,7 +201,8 @@
  * /auth/login:
  *   post:
  *     tags: [Auth]
- *     summary: Inicia sesión para usuarios registrados
+ *     operationId: loginUser
+ *     summary: Inicia sesión con credenciales locales
  *     requestBody:
  *       required: true
  *       content:
@@ -131,11 +211,19 @@
  *             $ref: '#/components/schemas/LoginInput'
  *     responses:
  *       200:
- *         description: Inicio de sesión exitoso.
+ *         description: Login exitoso.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthSuccessResponse'
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
  *       401:
- *         description: Credenciales inválidas.
+ *         $ref: '#/components/responses/Unauthorized'
  *       403:
- *         description: Cuenta no activada o registrada con Google.
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
  */
 
 /**
@@ -143,12 +231,14 @@
  * /auth/google:
  *   get:
  *     tags: [Auth]
- *     summary: Inicia flujo OAuth2 con Google (redirección)
+ *     operationId: startGoogleOAuth
+ *     summary: Inicia el flujo OAuth2 con Google
+ *     description: Redirige al usuario a Google para autorización.
  *     responses:
  *       302:
- *         description: Redirige a la pantalla de autorización de Google.
+ *         description: Redirección a Google OAuth.
  *       500:
- *         description: Integración OAuth de Google no configurada.
+ *         $ref: '#/components/responses/InternalServerError'
  */
 
 /**
@@ -156,25 +246,36 @@
  * /auth/google/callback:
  *   get:
  *     tags: [Auth]
+ *     operationId: handleGoogleOAuthCallback
  *     summary: Callback OAuth2 de Google
  *     parameters:
  *       - in: query
  *         name: code
+ *         required: false
  *         schema:
  *           type: string
- *         required: true
- *         description: Código de autorización enviado por Google.
+ *         description: Código OAuth enviado por Google.
+ *       - in: query
+ *         name: error
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Error OAuth devuelto por Google si el flujo fue rechazado.
  *     responses:
  *       200:
  *         description: Login/registro con Google exitoso.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthSuccessResponse'
  *       400:
- *         description: Código OAuth faltante.
+ *         $ref: '#/components/responses/BadRequest'
  *       401:
- *         description: No se pudo validar identidad con Google.
+ *         $ref: '#/components/responses/Unauthorized'
  *       409:
- *         description: El correo ya existe como cuenta local.
+ *         $ref: '#/components/responses/Conflict'
  *       500:
- *         description: Integración OAuth de Google no configurada.
+ *         $ref: '#/components/responses/InternalServerError'
  */
 
 /**
@@ -182,7 +283,8 @@
  * /auth/google/login:
  *   post:
  *     tags: [Auth]
- *     summary: Inicia sesión con Google mediante idToken
+ *     operationId: loginWithGoogle
+ *     summary: Inicia sesión con Google usando idToken
  *     requestBody:
  *       required: true
  *       content:
@@ -191,13 +293,19 @@
  *             $ref: '#/components/schemas/GoogleLoginInput'
  *     responses:
  *       200:
- *         description: Inicio de sesión con Google exitoso.
+ *         description: Login con Google exitoso.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthSuccessResponse'
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
  *       401:
- *         description: Token de Google inválido o no verificado.
+ *         $ref: '#/components/responses/Unauthorized'
  *       409:
- *         description: El correo ya existe como cuenta local.
+ *         $ref: '#/components/responses/Conflict'
  *       500:
- *         description: Integración de Google no configurada en servidor.
+ *         $ref: '#/components/responses/InternalServerError'
  */
 
 /**
@@ -205,18 +313,29 @@
  * /auth/request-password-reset:
  *   post:
  *     tags: [Auth]
- *     summary: Solicita un token de restablecimiento de contraseña
+ *     operationId: requestPasswordReset
+ *     summary: Solicita correo de restablecimiento de contraseña
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/PasswordResetRequest'
+ *             $ref: '#/components/schemas/PasswordResetRequestInput'
  *     responses:
  *       200:
- *         description: Token enviado al correo electrónico.
+ *         description: Correo de recuperación enviado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BasicSuccessResponse'
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  *       404:
- *         description: Correo no encontrado.
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
  */
 
 /**
@@ -224,42 +343,23 @@
  * /auth/reset-password:
  *   post:
  *     tags: [Auth]
- *     summary: Establece una nueva contraseña mediante token válido
+ *     operationId: resetPassword
+ *     summary: Restablece contraseña mediante token válido
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/PasswordReset'
+ *             $ref: '#/components/schemas/PasswordResetInput'
  *     responses:
  *       200:
- *         description: Contraseña actualizada correctamente.
+ *         description: Contraseña actualizada.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BasicSuccessResponse'
  *       400:
- *         description: Token inválido o expirado.
- */
-
-/**
- * @swagger
- * /auth/logout:
- *   post:
- *     tags: [Auth]
- *     summary: Cierra la sesión del usuario (solo si implementas refresh tokens)
- *     responses:
- *       200:
- *         description: Logout exitoso.
- */
-
-/**
- * @swagger
- * /auth/refresh:
- *   post:
- *     tags: [Auth]
- *     summary: Refresca el token de acceso (pendiente de implementación)
- *     responses:
- *       200:
- *         description: Nuevo token de acceso generado.
- *       401:
- *         description: Token de refresh faltante.
- *       403:
- *         description: Token inválido.
+ *         $ref: '#/components/responses/BadRequest'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
  */

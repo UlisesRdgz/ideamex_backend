@@ -23,6 +23,7 @@ export const appConfig = {
   // Información general de la aplicación
   appName: 'IDEAMEX API',
   version: '1.0.0',
+  publicApiUrl: (process.env.PUBLIC_API_URL || 'https://iauusmb.ibt.unam.mx/ideamex2/api/').trim(),
 
   contact: {
     name: 'Ulises Rodríguez García',

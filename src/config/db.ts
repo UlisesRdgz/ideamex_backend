@@ -34,13 +34,7 @@ export const pool = mariadb.createPool({
  * Si hay un error, detiene la ejecución del servidor.
  */
 export const checkDatabaseConnection = async (): Promise<void> => {
-    try {
-        // Abre y libera una conexión real para verificar credenciales/red.
-        const conn = await pool.getConnection();
-        console.log('[DB] Conexión exitosa a MariaDB');
-        conn.release();
-    } catch (err) {
-        console.error('[DB] Error al conectar a la base de datos:', err);
-        process.exit(1);
-    }
+  // Abre y libera una conexión real para verificar credenciales/red.
+  const conn = await pool.getConnection();
+  conn.release();
 };

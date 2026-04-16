@@ -13,7 +13,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { Request, Response } from 'express';
 import { sanitizeEmailPrefix, sanitizeName } from '../../utils/file';
 import {
@@ -51,6 +51,15 @@ const RESULT_FILE_EXTENSION_ALLOWLIST = new Set([
   '.pdf',
   '.zip',
 ]);
+const RESULT_IMAGE_EXTENSION_ALLOWLIST = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.svg',
+  '.pdf',
+]);
+const RESULT_ARCHIVE_ZIP_NAME = 'DiffExpAllResults.zip';
+const RESULT_ARCHIVE_TAR_GZ_NAME = 'DiffExpAllResults.tar.gz';
 const MIME_BY_EXTENSION: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
   '.log': 'text/plain; charset=utf-8',
@@ -69,6 +78,17 @@ interface ProjectResultFile {
   size_bytes: number;
   updated_at: string;
   mime_type: string;
+}
+
+interface ProjectResultArchive {
+  absolute_path: string;
+  mime_type: string;
+  extension: 'zip' | 'tar.gz';
+}
+
+interface ProjectCoverCandidate {
+  name: string;
+  score: number;
 }
 
 type AnalysisExecutionMode = 'local' | 'docker';
@@ -524,8 +544,9 @@ const resolveProjectAbsolutePath = (basePath: string, projectRelativePath: strin
     return null;
   }
 
+  const normalizedRelativePath = projectRelativePath.replace(/\\/g, '/');
   const normalizedBasePath = path.resolve(basePath);
-  const absolutePath = path.resolve(normalizedBasePath, ...projectRelativePath.split('/'));
+  const absolutePath = path.resolve(normalizedBasePath, ...normalizedRelativePath.split('/'));
 
   if (
     absolutePath !== normalizedBasePath &&
@@ -542,7 +563,50 @@ const resolveProjectAbsolutePath = (basePath: string, projectRelativePath: strin
  * El pipeline escribe en el mismo directorio del archivo de entrada.
  */
 const resolveResultDirectory = (basePath: string, project: { path: string }): string | null => {
-  return resolveProjectAbsolutePath(basePath, path.posix.dirname(project.path));
+  const normalizedRelativePath = project.path.replace(/\\/g, '/');
+  return resolveProjectAbsolutePath(basePath, path.posix.dirname(normalizedRelativePath));
+};
+
+/**
+ * Resuelve rutas candidatas de carpeta de proyecto para limpieza en FS.
+ * Incluye variantes para compatibilidad con datos legacy.
+ */
+const resolveProjectDirectoryCandidates = (
+  basePath: string,
+  project: { path: string; title: string },
+  userEmail?: string
+): string[] => {
+  const candidates = new Set<string>();
+
+  const normalizedRelativePath = project.path.replace(/\\/g, '/');
+  const fromPath = resolveProjectAbsolutePath(basePath, path.posix.dirname(normalizedRelativePath));
+  if (fromPath) {
+    candidates.add(fromPath);
+  }
+
+  if (normalizedRelativePath.startsWith('projects/')) {
+    const withoutPrefix = normalizedRelativePath.slice('projects/'.length);
+    const legacyPath = resolveProjectAbsolutePath(basePath, path.posix.dirname(withoutPrefix));
+    if (legacyPath) {
+      candidates.add(legacyPath);
+    }
+  }
+
+  if (typeof userEmail === 'string' && userEmail.trim().length > 0) {
+    const byTitlePath = resolveProjectAbsolutePath(
+      basePath,
+      path.posix.join(sanitizeEmailPrefix(userEmail), sanitizeName(project.title))
+    );
+    if (byTitlePath) {
+      candidates.add(byTitlePath);
+    }
+  }
+
+  const normalizedBasePath = path.resolve(basePath);
+  return Array.from(candidates).filter((folderPath) => {
+    const normalizedFolder = path.resolve(folderPath);
+    return normalizedFolder !== normalizedBasePath;
+  });
 };
 
 /**
@@ -603,6 +667,82 @@ const listProjectResultFiles = (resultDir: string, currentDir = resultDir): Proj
 };
 
 /**
+ * Asigna prioridad visual a imágenes de resultados para portada del proyecto.
+ * Se favorecen gráficos comúnmente más representativos (MDS/volcano/heatmap/PCA).
+ */
+const scoreResultImageCandidate = (fileName: string): number => {
+  const normalized = fileName.toLowerCase();
+
+  const keywordScores: Array<{ pattern: RegExp; score: number }> = [
+    { pattern: /mds/, score: 100 },
+    { pattern: /volcano/, score: 95 },
+    { pattern: /heatmap/, score: 90 },
+    { pattern: /pca|pc-?a/, score: 85 },
+    { pattern: /corrplot|correlation/, score: 80 },
+    { pattern: /ma[-_ ]?plot|maplot/, score: 75 },
+    { pattern: /boxplot|box[-_ ]?plot/, score: 70 },
+    { pattern: /barplot|bar[-_ ]?plot/, score: 65 },
+    { pattern: /plot|graph|figure|fig/, score: 50 },
+  ];
+
+  for (const rule of keywordScores) {
+    if (rule.pattern.test(normalized)) {
+      return rule.score;
+    }
+  }
+
+  return 10;
+};
+
+/**
+ * Selecciona una imagen candidata para `image_url` dentro de la carpeta de resultados.
+ * Devuelve la ruta relativa al directorio de resultados.
+ */
+const selectProjectCoverImageFromResults = (resultDir: string): string | null => {
+  const files = listProjectResultFiles(resultDir);
+  const candidates: ProjectCoverCandidate[] = files
+    .filter((file) => RESULT_IMAGE_EXTENSION_ALLOWLIST.has(path.extname(file.name).toLowerCase()))
+    .map((file) => ({
+      name: file.name,
+      score: scoreResultImageCandidate(file.name),
+    }));
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  candidates.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  return candidates[0].name;
+};
+
+/**
+ * Resuelve la ruta relativa final para `image_url` del proyecto
+ * (relativa a `PROJECTS_BASE_PATH`).
+ */
+const resolveProjectCoverImagePath = (outputDir: string): string | null => {
+  const relativeImageFromResult = selectProjectCoverImageFromResults(outputDir);
+  if (!relativeImageFromResult) {
+    return null;
+  }
+
+  const projectsBasePath = getProjectsBasePath();
+  if (!isPathInsideBase(projectsBasePath, outputDir)) {
+    return null;
+  }
+
+  const relativeOutputDir = toPosixPath(path.relative(projectsBasePath, outputDir));
+  const normalizedImagePath = relativeImageFromResult.split(path.sep).join('/');
+
+  return path.posix.join(relativeOutputDir, normalizedImagePath);
+};
+
+/**
  * Resuelve de forma segura el archivo solicitado dentro de la carpeta de resultados.
  * Rechaza path traversal y rutas vacías.
  */
@@ -632,6 +772,67 @@ const resolveResultFilePath = (resultDir: string, fileName: string): string | nu
   }
 
   return absolutePath;
+};
+
+/**
+ * Intenta crear un zip con todos los resultados dentro de `resultDir`.
+ * Si el comando `zip` no está disponible o falla, regresa null y se usa fallback.
+ */
+const tryCreateProjectResultZip = (resultDir: string): string | null => {
+  const zipPath = path.join(resultDir, RESULT_ARCHIVE_ZIP_NAME);
+
+  if (fs.existsSync(zipPath) && fs.statSync(zipPath).isFile()) {
+    return zipPath;
+  }
+
+  const zipBin = (process.env.ANALYSIS_ZIP_BIN || 'zip').trim() || 'zip';
+  const zipExecution = spawnSync(
+    zipBin,
+    ['-r', '-q', RESULT_ARCHIVE_ZIP_NAME, '.', '-x', RESULT_ARCHIVE_ZIP_NAME],
+    {
+      cwd: resultDir,
+      encoding: 'utf-8',
+    }
+  );
+
+  if (zipExecution.error || zipExecution.status !== 0) {
+    const details = zipExecution.error?.message || zipExecution.stderr || zipExecution.stdout || '';
+    console.warn(`[RESULTS] Unable to generate zip archive with "${zipBin}": ${details.trim()}`);
+    return null;
+  }
+
+  if (!fs.existsSync(zipPath) || !fs.statSync(zipPath).isFile()) {
+    return null;
+  }
+
+  return zipPath;
+};
+
+/**
+ * Resuelve el archivo comprimido de resultados para descarga:
+ * 1) zip existente o generado on-demand
+ * 2) fallback al tar.gz generado por el pipeline de R.
+ */
+const resolveProjectResultArchive = (resultDir: string): ProjectResultArchive | null => {
+  const zipPath = tryCreateProjectResultZip(resultDir);
+  if (zipPath) {
+    return {
+      absolute_path: zipPath,
+      mime_type: 'application/zip',
+      extension: 'zip',
+    };
+  }
+
+  const tarPath = path.join(resultDir, RESULT_ARCHIVE_TAR_GZ_NAME);
+  if (fs.existsSync(tarPath) && fs.statSync(tarPath).isFile()) {
+    return {
+      absolute_path: tarPath,
+      mime_type: 'application/gzip',
+      extension: 'tar.gz',
+    };
+  }
+
+  return null;
 };
 
 /**
@@ -947,7 +1148,8 @@ const executeAnalysisInBackground = (params: {
     }
 
     settled = true;
-    void markProjectRunCompleted(params.projectId, params.userId).catch((dbError) => {
+    const coverImagePath = resolveProjectCoverImagePath(params.outputDir);
+    void markProjectRunCompleted(params.projectId, params.userId, coverImagePath).catch((dbError) => {
       console.error('[ANALYSIS] Error saving success status:', dbError);
     });
   };
@@ -1203,10 +1405,10 @@ export const handleDeleteProject = async (req: Request, res: Response): Promise<
       return;
     }
 
-    if (project.status !== 'PENDING') {
+    if (project.status === 'PROCESSING') {
       sendErrorResponse(
         res,
-        'Project cannot be deleted because analysis already started or finished',
+        'Project cannot be deleted while analysis is running',
         null,
         409
       );
@@ -1215,17 +1417,36 @@ export const handleDeleteProject = async (req: Request, res: Response): Promise<
 
     // Resuelve ruta absoluta segura para evitar borrar fuera del storage permitido.
     const basePath = getProjectsBasePath();
-    const absoluteFilePath = resolveProjectAbsolutePath(basePath, project.path);
-    if (!absoluteFilePath) {
+    const projectFolderCandidates = resolveProjectDirectoryCandidates(
+      basePath,
+      { path: project.path, title: project.title },
+      typeof user.email === 'string' ? user.email : undefined
+    );
+
+    if (projectFolderCandidates.length === 0) {
       sendErrorResponse(res, 'Project path is invalid', null, 500);
       return;
     }
 
-    const folderPath = path.dirname(absoluteFilePath);
-
     try {
-      if (fs.existsSync(folderPath)) {
-        fs.rmSync(folderPath, { recursive: true, force: true });
+      for (const folderPath of projectFolderCandidates) {
+        if (fs.existsSync(folderPath)) {
+          fs.rmSync(folderPath, { recursive: true, force: true });
+        }
+      }
+
+      // Limpieza opcional: elimina la carpeta de usuario si quedó vacía.
+      const userRoot = resolveProjectAbsolutePath(
+        basePath,
+        sanitizeEmailPrefix(typeof user.email === 'string' ? user.email : '')
+      );
+      if (
+        userRoot &&
+        fs.existsSync(userRoot) &&
+        fs.statSync(userRoot).isDirectory() &&
+        fs.readdirSync(userRoot).length === 0
+      ) {
+        fs.rmdirSync(userRoot);
       }
     } catch (err) {
       console.error('[FS] Error removing project folder:', err);
@@ -1414,6 +1635,88 @@ export const handleGetProjectResults = async (req: Request, res: Response): Prom
   } catch (error) {
     console.error('Error in handleGetProjectResults:', error);
     sendErrorResponse(res, 'Server error while retrieving project results', null, 500);
+  }
+};
+
+/**
+ * Descarga el archivo comprimido con todos los resultados del proyecto.
+ *
+ * @route GET /analysis/project/:projectId/results/archive
+ * @access Privado (requiere autenticación Bearer)
+ */
+export const handleDownloadProjectResultsArchive = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const user = req.user;
+    const projectId = Number(req.params.projectId);
+
+    if (!user || typeof user.id_user !== 'number') {
+      sendErrorResponse(res, 'Missing or invalid user information from token', null, 400);
+      return;
+    }
+
+    if (Number.isNaN(projectId)) {
+      sendErrorResponse(res, 'Invalid project ID', null, 400);
+      return;
+    }
+
+    const project = await getProjectById(projectId, user.id_user);
+    if (!project) {
+      sendErrorResponse(res, 'Project not found or access denied', null, 404);
+      return;
+    }
+
+    if (project.status !== 'COMPLETED') {
+      sendErrorResponse(
+        res,
+        'Project archive is available only after successful analysis completion',
+        null,
+        409
+      );
+      return;
+    }
+
+    const basePath = getProjectsBasePath();
+    const resultDir = resolveResultDirectory(basePath, project);
+    if (!resultDir) {
+      sendErrorResponse(res, 'Project result path is invalid', null, 500);
+      return;
+    }
+
+    if (!fs.existsSync(resultDir)) {
+      sendErrorResponse(res, 'Result directory not found on server', null, 404);
+      return;
+    }
+
+    const archive = resolveProjectResultArchive(resultDir);
+    if (!archive) {
+      sendErrorResponse(
+        res,
+        'Compressed project archive was not found on server',
+        null,
+        404
+      );
+      return;
+    }
+
+    const safeTitle = sanitizeName(project.title) || `project-${project.id_project}`;
+    const downloadFileName = `${safeTitle}_results.${archive.extension}`;
+    res.setHeader('Content-Disposition', `attachment; filename=\"${downloadFileName}\"`);
+    res.type(archive.mime_type);
+
+    res.sendFile(path.resolve(archive.absolute_path), (error) => {
+      if (error) {
+        console.error('[RESULTS] Error sending project archive:', error);
+        if (!res.headersSent) {
+          sendErrorResponse(res, 'Error while sending project archive', null, 500);
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error in handleDownloadProjectResultsArchive:', error);
+    sendErrorResponse(res, 'Server error while downloading project archive', null, 500);
   }
 };
 

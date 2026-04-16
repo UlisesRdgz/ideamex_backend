@@ -18,40 +18,179 @@ import { appConfig } from './appConfig';
  * @constant {Options} swaggerOptions
  */
 const swaggerOptions: Options = {
-    definition: {
-        openapi: '3.0.0',
-        info: {
-            title: appConfig.appName,
-            version: appConfig.version,
-            description: 'API documentation for the IDEAMEX backend',
-            contact: {
-                name: appConfig.contact.name,
-                email: appConfig.contact.email,
-            },
-        },
-        servers: [
-            {
-                url: `http://127.0.0.1:${appConfig.port}${appConfig.basePath}`,
-                description: 'Local development server',
-            },
-        ],
-        components: {
-            securitySchemes: {
-                bearerAuth: {
-                    type: 'http',
-                    scheme: 'bearer',
-                    bearerFormat: 'JWT',
-                },
-            },
-        },
-        security: [
-            {
-                bearerAuth: [],
-            },
-        ],
+  definition: {
+    openapi: '3.0.3',
+    info: {
+      title: appConfig.appName,
+      version: appConfig.version,
+      description:
+        'API del backend de IDEAMEX para autenticación, contacto y gestión/ejecución de análisis.',
+      contact: {
+        name: appConfig.contact.name,
+        email: appConfig.contact.email,
+      },
     },
-    // Incluye anotaciones de Swagger de todos los módulos
-    apis: ['./src/api/**/*.docs.ts'],
+    servers: [
+      {
+        url: `http://127.0.0.1:${appConfig.port}${appConfig.basePath}`,
+        description: 'Servidor local',
+      },
+      {
+        url: appConfig.publicApiUrl,
+        description: 'Servidor público',
+      },
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
+      schemas: {
+        ErrorResponse: {
+          type: 'object',
+          required: ['status', 'message', 'details'],
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['error'],
+              example: 'error',
+            },
+            message: {
+              type: 'string',
+              example: 'Validation failed',
+            },
+            details: {
+              nullable: true,
+              description: 'Detalles opcionales del error (objeto, arreglo o null).',
+              example: null,
+            },
+          },
+          example: {
+            status: 'error',
+            message: 'Validation failed',
+            details: null,
+          },
+        },
+      },
+      responses: {
+        BadRequest: {
+          description: 'Solicitud inválida',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+              example: {
+                status: 'error',
+                message: 'Validation failed',
+                details: [
+                  {
+                    msg: 'Correo electrónico inválido',
+                    path: 'email',
+                  },
+                ],
+              },
+            },
+          },
+        },
+        Unauthorized: {
+          description: 'No autenticado o token inválido',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+              example: {
+                status: 'error',
+                message: 'Token inválido o expirado',
+                details: null,
+              },
+            },
+          },
+        },
+        Forbidden: {
+          description: 'Acceso prohibido para la operación solicitada',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+              example: {
+                status: 'error',
+                message: 'No tienes permisos para esta operación',
+                details: null,
+              },
+            },
+          },
+        },
+        NotFound: {
+          description: 'Recurso no encontrado',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+              example: {
+                status: 'error',
+                message: 'Recurso no encontrado',
+                details: null,
+              },
+            },
+          },
+        },
+        Conflict: {
+          description: 'Conflicto de estado o de datos',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+              example: {
+                status: 'error',
+                message: 'Conflicto de estado del recurso',
+                details: null,
+              },
+            },
+          },
+        },
+        TooManyRequests: {
+          description: 'Límite de solicitudes excedido',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+              example: {
+                status: 'error',
+                message: 'Has alcanzado el límite de solicitudes',
+                details: null,
+              },
+            },
+          },
+        },
+        InternalServerError: {
+          description: 'Error interno del servidor',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+              example: {
+                status: 'error',
+                message: 'Error interno del servidor',
+                details: null,
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  // Incluye anotaciones de Swagger de todos los módulos
+  apis: ['./src/api/**/*.docs.ts'],
 };
 
 export default swaggerOptions;
