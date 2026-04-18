@@ -36,6 +36,17 @@ import {
   FrontSampleLike,
   UploadProjectPayloadLike,
 } from './analysis.types';
+import {
+  type DifferentialExpression,
+  type DifferentialExpressionComparison,
+  type MethodStatus,
+  type OutputFile,
+  type Plot,
+  type PlotType,
+  type ProjectResults,
+  type ProjectRunStatus,
+} from '../../models/ProjectResults';
+import { type ProjectRecord } from '../../models/Project';
 
 const RUN_LOG_FILE = 'RunSummary.log';
 const SAMPLE_NAME_PATTERN = /^.+_[a-zA-Z0-9]+$/;
@@ -98,6 +109,329 @@ interface AnalysisRuntimeCommand {
   command: string;
   args: string[];
 }
+
+interface MethodDirectoryConfig {
+  methodLabel: string;
+  methodResultFolder: string;
+}
+
+const STRUCTURED_DE_METHODS: MethodDirectoryConfig[] = [
+  { methodLabel: 'edgeR', methodResultFolder: 'edgeR_Results' },
+  { methodLabel: 'DESeq2', methodResultFolder: 'DESeq2_Results' },
+  { methodLabel: 'limma', methodResultFolder: 'limma_Results' },
+];
+
+/**
+ * Mapea estado interno de proyecto al estado de corrida esperado por frontend.
+ */
+const mapProjectStatusToRunStatus = (status: string): ProjectRunStatus => {
+  switch (status) {
+    case 'PROCESSING':
+      return 'running';
+    case 'COMPLETED':
+      return 'completed';
+    case 'FAILED':
+      return 'failed';
+    case 'PENDING':
+    default:
+      return 'pending';
+  }
+};
+
+/**
+ * Construye URL relativa para descarga total del proyecto.
+ */
+const buildProjectArchiveDownloadUrl = (baseUrl: string, projectId: number): string =>
+  `${baseUrl}/project/${projectId}/results/archive`;
+
+/**
+ * Construye URL relativa para descarga de archivo individual.
+ */
+const buildProjectFileDownloadUrl = (
+  baseUrl: string,
+  projectId: number,
+  fileName: string
+): string =>
+  `${baseUrl}/project/${projectId}/results/file?name=${encodeURIComponent(fileName)}&download=true`;
+
+/**
+ * Construye URL relativa para visualización inline de archivo individual.
+ */
+const buildProjectFileInlineUrl = (
+  baseUrl: string,
+  projectId: number,
+  fileName: string
+): string =>
+  `${baseUrl}/project/${projectId}/results/file?name=${encodeURIComponent(fileName)}`;
+
+/**
+ * Normaliza separador para parseo tabular simple (TSV/CSV/espacios).
+ */
+const splitRowByDetectedSeparator = (line: string, separator: ',' | '\t' | null): string[] => {
+  if (separator) {
+    return line.split(separator).map((cell) => cell.trim());
+  }
+
+  return line.trim().split(/\s+/).map((cell) => cell.trim());
+};
+
+/**
+ * Obtiene índice de columna usando una lista de patrones sobre encabezado normalizado.
+ */
+const findHeaderColumnIndex = (headers: string[], patterns: RegExp[]): number => {
+  return headers.findIndex((header) => patterns.some((pattern) => pattern.test(header)));
+};
+
+/**
+ * Convierte cadena numérica a number, tolerando comas.
+ */
+const parseNumericCell = (value: string | undefined): number | null => {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim().replace(',', '.');
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+/**
+ * Lee un archivo tabular de texto y devuelve encabezado + filas.
+ */
+const parseDelimitedTableFile = (
+  filePath: string
+): { headers: string[]; rows: string[][] } | null => {
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    return null;
+  }
+
+  const content = fs.readFileSync(filePath, 'utf8');
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length < 2) {
+    return null;
+  }
+
+  const separator = detectCountTableSeparator(lines[0]);
+  const headers = splitRowByDetectedSeparator(lines[0], separator).map((column) =>
+    column.toLowerCase()
+  );
+  const rows = lines.slice(1).map((line) => splitRowByDetectedSeparator(line, separator));
+
+  return { headers, rows };
+};
+
+/**
+ * Cuenta genes del archivo de entrada (filas sin encabezado).
+ */
+const countGenesFromInputFile = (inputFilePath: string): number => {
+  if (!fs.existsSync(inputFilePath) || !fs.statSync(inputFilePath).isFile()) {
+    return 0;
+  }
+
+  const raw = fs.readFileSync(inputFilePath, 'utf8');
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length === 0) {
+    return 0;
+  }
+
+  return Math.max(lines.length - 1, 0);
+};
+
+/**
+ * Detecta tipo de plot soportado en contrato estructurado.
+ */
+const detectStructuredPlotType = (fileName: string): PlotType | null => {
+  const normalized = fileName.toLowerCase();
+  if (normalized.includes('boxplot') || normalized.includes('box_plot')) {
+    return 'boxplot';
+  }
+
+  if (normalized.includes('density')) {
+    return 'density';
+  }
+
+  if (normalized.includes('pca')) {
+    return 'pca';
+  }
+
+  return null;
+};
+
+/**
+ * Infiere etiqueta de método por prefijo de ruta de archivo.
+ */
+const inferMethodLabelFromFilePath = (fileName: string): string | undefined => {
+  const normalized = fileName.toLowerCase();
+  if (normalized.startsWith('edger_results/')) {
+    return 'edgeR';
+  }
+  if (normalized.startsWith('deseq2_results/')) {
+    return 'DESeq2';
+  }
+  if (normalized.startsWith('limma_results/')) {
+    return 'limma';
+  }
+  if (normalized.startsWith('noiseq_results/')) {
+    return 'NOISeq';
+  }
+  if (normalized.startsWith('integration_results/')) {
+    return 'integrationResults';
+  }
+
+  return undefined;
+};
+
+/**
+ * Obtiene lista única de comparaciones candidatas para un método.
+ */
+const resolveComparisonNamesForMethod = (
+  methodFolderPath: string,
+  comparisons: Array<{ base: string; target: string }> | null
+): string[] => {
+  const fromProjectConfig = (comparisons || [])
+    .map((comparison) => `${comparison.target}vs${comparison.base}`)
+    .filter((name) => name.trim().length > 0);
+
+  const fromMethodFolder: string[] = [];
+  if (fs.existsSync(methodFolderPath) && fs.statSync(methodFolderPath).isDirectory()) {
+    const entries = fs.readdirSync(methodFolderPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        fromMethodFolder.push(entry.name);
+      }
+    }
+  }
+
+  return Array.from(new Set([...fromProjectConfig, ...fromMethodFolder])).sort((a, b) =>
+    a.localeCompare(b)
+  );
+};
+
+/**
+ * Busca el primer archivo existente cuyo nombre cumpla un patrón dentro de un directorio.
+ */
+const findFirstFileInDirectoryByPattern = (
+  directoryPath: string,
+  fileNamePattern: RegExp
+): string | null => {
+  if (!fs.existsSync(directoryPath) || !fs.statSync(directoryPath).isDirectory()) {
+    return null;
+  }
+
+  const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
+  const files = entries
+    .filter((entry) => entry.isFile() && fileNamePattern.test(entry.name))
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b));
+
+  return files.length > 0 ? files[0] : null;
+};
+
+/**
+ * Parsea genes top (gene, logFC, pValue) desde archivo *_TOP.txt.
+ */
+const parseTopGenesFromTopFile = (
+  topFilePath: string,
+  limit = 20
+): Array<{ gene: string; logFC: number; pValue: number }> => {
+  const table = parseDelimitedTableFile(topFilePath);
+  if (!table) {
+    return [];
+  }
+
+  const geneIndex = findHeaderColumnIndex(table.headers, [/^gene$/, /symbol/, /id$/]);
+  const logFCIndex = findHeaderColumnIndex(table.headers, [/logfc/, /^lfc$/]);
+  const pValueIndex = findHeaderColumnIndex(table.headers, [/pvalue/, /p\.value/, /fdr/, /padj/]);
+
+  if (geneIndex < 0) {
+    return [];
+  }
+
+  const output: Array<{ gene: string; logFC: number; pValue: number }> = [];
+
+  for (const row of table.rows) {
+    const gene = row[geneIndex];
+    if (!gene || gene.trim().length === 0) {
+      continue;
+    }
+
+    const logFC = parseNumericCell(logFCIndex >= 0 ? row[logFCIndex] : undefined) ?? 0;
+    const pValue = parseNumericCell(pValueIndex >= 0 ? row[pValueIndex] : undefined) ?? 1;
+
+    output.push({
+      gene: gene.trim(),
+      logFC,
+      pValue,
+    });
+
+    if (output.length >= limit) {
+      break;
+    }
+  }
+
+  return output;
+};
+
+/**
+ * Calcula conteos de regulación a partir de un archivo diferencial principal.
+ */
+const parseDifferentialCountsFromMainFile = (
+  mainFilePath: string,
+  significanceThreshold: number
+): { upregulated: number; downregulated: number; significant: number } => {
+  const table = parseDelimitedTableFile(mainFilePath);
+  if (!table) {
+    return { upregulated: 0, downregulated: 0, significant: 0 };
+  }
+
+  const logFCIndex = findHeaderColumnIndex(table.headers, [/logfc/, /^lfc$/]);
+  const significanceIndex = findHeaderColumnIndex(table.headers, [/fdr/, /padj/, /pvalue/, /p\.value/]);
+
+  if (logFCIndex < 0) {
+    return { upregulated: 0, downregulated: 0, significant: 0 };
+  }
+
+  let upregulated = 0;
+  let downregulated = 0;
+  let significant = 0;
+
+  for (const row of table.rows) {
+    const logFC = parseNumericCell(row[logFCIndex]);
+    if (logFC === null) {
+      continue;
+    }
+
+    const significanceValue =
+      significanceIndex >= 0 ? parseNumericCell(row[significanceIndex]) : null;
+    const isSignificant =
+      significanceValue === null ? true : significanceValue <= significanceThreshold;
+
+    if (!isSignificant) {
+      continue;
+    }
+
+    significant += 1;
+    if (logFC >= 0) {
+      upregulated += 1;
+    } else {
+      downregulated += 1;
+    }
+  }
+
+  return { upregulated, downregulated, significant };
+};
 
 /**
  * Resuelve la ruta base de almacenamiento de proyectos desde entorno.
@@ -1653,6 +1987,307 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
   } catch (error) {
     console.error('Error in handleRunProjectAnalysis:', error);
     sendErrorResponse(res, 'Server error while starting analysis', null, 500);
+  }
+};
+
+/**
+ * Construye payload estructurado de resultados conforme a `models/ProjectResults.ts`.
+ */
+const buildStructuredProjectResultsPayload = (
+  req: Request,
+  project: ProjectRecord,
+  basePath: string,
+  resultDir: string
+): ProjectResults => {
+  const apiBaseUrl = (req.baseUrl || '/analysis').replace(/\/+$/, '');
+  const files = listProjectResultFiles(resultDir);
+  const inputFilePath = resolveProjectAbsolutePath(basePath, project.path);
+  const headerData =
+    inputFilePath && fs.existsSync(inputFilePath) ? parseCountTableHeader(inputFilePath) : null;
+
+  const samplesAnalyzed =
+    project.samples?.length || headerData?.sampleNames.length || 0;
+  const totalGenes =
+    inputFilePath && fs.existsSync(inputFilePath) ? countGenesFromInputFile(inputFilePath) : 0;
+  const runStatus = mapProjectStatusToRunStatus(project.status);
+  const startedAt = project.created_at?.toISOString?.();
+  const completedAt =
+    project.status === 'COMPLETED' || project.status === 'FAILED'
+      ? project.updated_at.toISOString()
+      : null;
+
+  const methodsStatus: MethodStatus[] = [];
+  if (project.selectedMethods) {
+    const methodSelectionMatrix: Array<{ enabled: boolean; label: string }> = [
+      { enabled: project.selectedMethods.edgeR, label: 'edgeR' },
+      { enabled: project.selectedMethods.deseq2, label: 'DESeq2' },
+      { enabled: project.selectedMethods.limma, label: 'limma' },
+      { enabled: project.selectedMethods.noiseq, label: 'NOISeq' },
+      { enabled: project.selectedMethods.dataAnalysis, label: 'dataAnalysis' },
+      { enabled: project.selectedMethods.integrationResults, label: 'integrationResults' },
+    ];
+
+    for (const row of methodSelectionMatrix) {
+      if (!row.enabled) {
+        continue;
+      }
+
+      methodsStatus.push({
+        method: row.label,
+        status: runStatus,
+        startedAt,
+        completedAt: completedAt || undefined,
+      });
+    }
+  }
+
+  const significanceThreshold = (() => {
+    const parsed = Number(project.parameters?.fdr || '');
+    return Number.isFinite(parsed) && parsed > 0 && parsed < 1 ? parsed : 0.05;
+  })();
+
+  const differentialExpression: DifferentialExpression[] = [];
+  for (const methodConfig of STRUCTURED_DE_METHODS) {
+    const methodEnabled = (() => {
+      if (!project.selectedMethods) {
+        return true;
+      }
+
+      switch (methodConfig.methodLabel) {
+        case 'edgeR':
+          return project.selectedMethods.edgeR;
+        case 'DESeq2':
+          return project.selectedMethods.deseq2;
+        case 'limma':
+          return project.selectedMethods.limma;
+        default:
+          return false;
+      }
+    })();
+
+    if (!methodEnabled) {
+      continue;
+    }
+
+    const methodFolderPath = path.join(resultDir, methodConfig.methodResultFolder);
+    const comparisonNames = resolveComparisonNamesForMethod(
+      methodFolderPath,
+      project.comparisons
+        ? project.comparisons.map((comparison) => ({
+            base: comparison.base,
+            target: comparison.target,
+          }))
+        : null
+    );
+
+    const comparisons: DifferentialExpressionComparison[] = [];
+    for (const comparisonName of comparisonNames) {
+      const comparisonPath = path.join(methodFolderPath, comparisonName);
+      const topFileName = findFirstFileInDirectoryByPattern(comparisonPath, /(_top|top)\.txt$/i);
+      const volcanoFileName = findFirstFileInDirectoryByPattern(
+        comparisonPath,
+        /volcano.*\.(png|jpg|jpeg|svg|pdf)$/i
+      );
+      const mainFileName = findFirstFileInDirectoryByPattern(
+        comparisonPath,
+        /^.*\.txt$/i
+      );
+
+      const topGenes = topFileName
+        ? parseTopGenesFromTopFile(path.join(comparisonPath, topFileName))
+        : [];
+
+      const upFromTop = topGenes.filter((row) => row.logFC >= 0).length;
+      const downFromTop = topGenes.filter((row) => row.logFC < 0).length;
+      const mainCounts = mainFileName
+        ? parseDifferentialCountsFromMainFile(
+            path.join(comparisonPath, mainFileName),
+            significanceThreshold
+          )
+        : { upregulated: 0, downregulated: 0, significant: 0 };
+
+      const upregulated = mainCounts.upregulated > 0 ? mainCounts.upregulated : upFromTop;
+      const downregulated = mainCounts.downregulated > 0 ? mainCounts.downregulated : downFromTop;
+      const significant = mainCounts.significant > 0 ? mainCounts.significant : topGenes.length;
+
+      comparisons.push({
+        name: comparisonName,
+        upregulated,
+        downregulated,
+        significant,
+        volcanoPlotUrl: volcanoFileName
+          ? buildProjectFileInlineUrl(
+              apiBaseUrl,
+              project.id_project,
+              toPosixPath(
+                path.join(methodConfig.methodResultFolder, comparisonName, volcanoFileName)
+              )
+            )
+          : undefined,
+        topGenes,
+      });
+    }
+
+    differentialExpression.push({
+      method: methodConfig.methodLabel as 'edgeR' | 'DESeq2' | 'limma',
+      comparisons,
+    });
+  }
+
+  const comparisonSummary = differentialExpression
+    .flatMap((method) => method.comparisons)
+    .reduce(
+      (acc, comparison) => {
+        acc.upregulated += comparison.upregulated;
+        acc.downregulated += comparison.downregulated;
+        acc.totalDifferential += comparison.significant;
+        return acc;
+      },
+      { upregulated: 0, downregulated: 0, totalDifferential: 0 }
+    );
+
+  const outputFiles: OutputFile[] = files.map((file) => ({
+    name: path.basename(file.name),
+    path: file.name,
+    sizeBytes: file.size_bytes,
+    updatedAt: file.updated_at,
+    mimeType: file.mime_type,
+    method: inferMethodLabelFromFilePath(file.name),
+    description: undefined,
+    downloadUrl: buildProjectFileDownloadUrl(apiBaseUrl, project.id_project, file.name),
+  }));
+
+  const dataAnalysisPlots: Plot[] = files
+    .map((file) => {
+      const plotType = detectStructuredPlotType(file.name);
+      if (!plotType) {
+        return null;
+      }
+
+      return {
+        id: sanitizeName(file.name) || path.basename(file.name),
+        title: path.basename(file.name),
+        type: plotType,
+        imageUrl: buildProjectFileInlineUrl(apiBaseUrl, project.id_project, file.name),
+      } as Plot;
+    })
+    .filter((plot): plot is Plot => !!plot);
+
+  const vennDiagrams = files
+    .filter((file) => /venn/i.test(file.name) && /image|pdf/.test(file.mime_type))
+    .map((file) => ({
+      id: sanitizeName(file.name) || path.basename(file.name),
+      title: path.basename(file.name),
+      imageUrl: buildProjectFileInlineUrl(apiBaseUrl, project.id_project, file.name),
+    }));
+
+  const heatmaps = files
+    .filter((file) => /heatmap/i.test(file.name) && /image|pdf/.test(file.mime_type))
+    .map((file) => ({
+      id: sanitizeName(file.name) || path.basename(file.name),
+      title: path.basename(file.name),
+      imageUrl: buildProjectFileInlineUrl(apiBaseUrl, project.id_project, file.name),
+    }));
+
+  const totalResultBytes = files.reduce((acc, file) => acc + file.size_bytes, 0);
+
+  return {
+    projectId: String(project.id_project),
+    projectTitle: project.title,
+    description: project.description || '',
+    status: runStatus,
+    completedAt,
+    summary: {
+      samplesAnalyzed,
+      totalGenes,
+      methodsUsed: methodsStatus.length,
+      comparisons: project.comparisons?.length || 0,
+      methodsStatus,
+      comparisonSummary,
+    },
+    dataAnalysis: {
+      qcMetrics: [
+        { label: 'result_files', value: files.length },
+        { label: 'result_size', value: Number((totalResultBytes / (1024 * 1024)).toFixed(2)), unit: 'MB' },
+        { label: 'selected_methods', value: methodsStatus.length },
+      ],
+      distributions: [],
+      plots: dataAnalysisPlots,
+    },
+    differentialExpression,
+    integratedResults: {
+      vennDiagrams,
+      consensusGenes: [],
+      heatmaps,
+      notes:
+        project.selectedMethods && !project.selectedMethods.integrationResults
+          ? 'Integration results were not selected for this run'
+          : undefined,
+    },
+    outputFiles: {
+      downloadAllUrl: buildProjectArchiveDownloadUrl(apiBaseUrl, project.id_project),
+      files: outputFiles,
+    },
+  };
+};
+
+/**
+ * Devuelve resultados estructurados de un proyecto finalizado.
+ *
+ * @route GET /analysis/project/:projectId/results/structured
+ * @access Privado (requiere autenticación Bearer)
+ */
+export const handleGetProjectResultsStructured = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const user = req.user;
+    const projectId = Number(req.params.projectId);
+
+    if (!user || typeof user.id_user !== 'number') {
+      sendErrorResponse(res, 'Missing or invalid user information from token', null, 400);
+      return;
+    }
+
+    if (Number.isNaN(projectId)) {
+      sendErrorResponse(res, 'Invalid project ID', null, 400);
+      return;
+    }
+
+    const project = await getProjectById(projectId, user.id_user);
+    if (!project) {
+      sendErrorResponse(res, 'Project not found or access denied', null, 404);
+      return;
+    }
+
+    if (project.status !== 'COMPLETED') {
+      sendErrorResponse(
+        res,
+        'Project results are available only after successful analysis completion',
+        null,
+        409
+      );
+      return;
+    }
+
+    const basePath = getProjectsBasePath();
+    const resultDir = resolveResultDirectory(basePath, project);
+    if (!resultDir) {
+      sendErrorResponse(res, 'Project result path is invalid', null, 500);
+      return;
+    }
+
+    if (!fs.existsSync(resultDir)) {
+      sendErrorResponse(res, 'Result directory not found on server', null, 404);
+      return;
+    }
+
+    const payload = buildStructuredProjectResultsPayload(req, project, basePath, resultDir);
+    sendSuccessResponse(res, 'Project structured results retrieved successfully', payload, 200);
+  } catch (error) {
+    console.error('Error in handleGetProjectResultsStructured:', error);
+    sendErrorResponse(res, 'Server error while retrieving structured project results', null, 500);
   }
 };
 

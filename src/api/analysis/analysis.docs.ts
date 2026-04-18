@@ -288,6 +288,76 @@
  *               updated_at: '2026-04-16T03:14:51.000Z'
  *               mime_type: text/plain; charset=utf-8
  *
+ *     AnalysisProjectStructuredResultsSuccessResponse:
+ *       type: object
+ *       required: [status, message, data]
+ *       properties:
+ *         status:
+ *           type: string
+ *           enum: [success]
+ *         message:
+ *           type: string
+ *         data:
+ *           type: object
+ *           description: Contrato estructurado ProjectResults para frontend.
+ *           properties:
+ *             projectId:
+ *               type: string
+ *             projectTitle:
+ *               type: string
+ *             description:
+ *               type: string
+ *             status:
+ *               type: string
+ *               enum: [pending, running, completed, failed]
+ *             completedAt:
+ *               type: string
+ *               nullable: true
+ *               format: date-time
+ *             summary:
+ *               type: object
+ *             dataAnalysis:
+ *               type: object
+ *             differentialExpression:
+ *               type: array
+ *               items:
+ *                 type: object
+ *             integratedResults:
+ *               type: object
+ *             outputFiles:
+ *               type: object
+ *       example:
+ *         status: success
+ *         message: Project structured results retrieved successfully
+ *         data:
+ *           projectId: "14"
+ *           projectTitle: postman-crud-523744
+ *           description: Proyecto para prueba CRUD desde Postman
+ *           status: completed
+ *           completedAt: '2026-04-16T03:14:51.000Z'
+ *           summary:
+ *             samplesAnalyzed: 6
+ *             totalGenes: 12000
+ *             methodsUsed: 2
+ *             comparisons: 1
+ *             methodsStatus: []
+ *             comparisonSummary:
+ *               upregulated: 120
+ *               downregulated: 98
+ *               totalDifferential: 218
+ *           dataAnalysis:
+ *             qcMetrics: []
+ *             distributions: []
+ *             plots: []
+ *           differentialExpression: []
+ *           integratedResults:
+ *             vennDiagrams: []
+ *             consensusGenes: []
+ *             heatmaps: []
+ *           outputFiles:
+ *             downloadAllUrl: /analysis/project/14/results/archive
+ *             files: []
+ *
  *     GenericSuccessResponse:
  *       type: object
  *       required: [status, message, data]
@@ -449,6 +519,33 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/AnalysisProjectResultsSuccessResponse'
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         $ref: '#/components/responses/Conflict'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ *
+ * /analysis/project/{projectId}/results/structured:
+ *   get:
+ *     tags: [Analysis]
+ *     operationId: getProjectStructuredResults
+ *     summary: Devuelve resultados estructurados para frontend (ProjectResults)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - $ref: '#/components/parameters/ProjectIdParam'
+ *     responses:
+ *       200:
+ *         description: Resultados estructurados obtenidos correctamente.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AnalysisProjectStructuredResultsSuccessResponse'
  *       400:
  *         $ref: '#/components/responses/BadRequest'
  *       401:
