@@ -7,8 +7,8 @@
 export type ProjectRunStatus = 'pending' | 'running' | 'completed' | 'failed';
 export type ProjectTrend = 'up' | 'down' | 'flat';
 export type DifferentialDirection = 'up' | 'down';
-export type DifferentialMethod = 'edgeR' | 'DESeq2' | 'limma';
-export type PlotType = 'boxplot' | 'density' | 'pca';
+export type DifferentialMethod = 'EdgeR' | 'DESeq2' | 'Limma' | 'NOISeq';
+export type PlotType = 'boxplot' | 'density' | 'pca' | 'mds' | 'cpm';
 
 export type MethodStatus = {
   method: string;

@@ -96,14 +96,15 @@ interface AnalysisRuntimeCommand {
 }
 
 interface MethodDirectoryConfig {
-  methodLabel: string;
+  methodLabel: DifferentialExpression['method'];
   methodResultFolder: string;
 }
 
 const STRUCTURED_DE_METHODS: MethodDirectoryConfig[] = [
-  { methodLabel: 'edgeR', methodResultFolder: 'edgeR_Results' },
+  { methodLabel: 'EdgeR', methodResultFolder: 'edgeR_Results' },
   { methodLabel: 'DESeq2', methodResultFolder: 'DESeq2_Results' },
-  { methodLabel: 'limma', methodResultFolder: 'limma_Results' },
+  { methodLabel: 'Limma', methodResultFolder: 'limma_Results' },
+  { methodLabel: 'NOISeq', methodResultFolder: 'NOISeq_Results' },
 ];
 
 /**
@@ -239,6 +240,12 @@ const countGenesFromInputFile = (inputFilePath: string): number => {
  */
 const detectStructuredPlotType = (fileName: string): PlotType | null => {
   const normalized = fileName.toLowerCase();
+  const extension = path.extname(normalized);
+  const isVisual = ['.png', '.jpg', '.jpeg', '.svg', '.pdf'].includes(extension);
+  if (!isVisual) {
+    return null;
+  }
+
   if (normalized.includes('boxplot') || normalized.includes('box_plot')) {
     return 'boxplot';
   }
@@ -251,6 +258,14 @@ const detectStructuredPlotType = (fileName: string): PlotType | null => {
     return 'pca';
   }
 
+  if (normalized.includes('mds')) {
+    return 'mds';
+  }
+
+  if (normalized.includes('cpm')) {
+    return 'cpm';
+  }
+
   return null;
 };
 
@@ -260,13 +275,13 @@ const detectStructuredPlotType = (fileName: string): PlotType | null => {
 const inferMethodLabelFromFilePath = (fileName: string): string | undefined => {
   const normalized = fileName.toLowerCase();
   if (normalized.startsWith('edger_results/')) {
-    return 'edgeR';
+    return 'EdgeR';
   }
   if (normalized.startsWith('deseq2_results/')) {
     return 'DESeq2';
   }
   if (normalized.startsWith('limma_results/')) {
-    return 'limma';
+    return 'Limma';
   }
   if (normalized.startsWith('noiseq_results/')) {
     return 'NOISeq';
@@ -1687,9 +1702,9 @@ export const buildStructuredProjectResultsPayload = (
   const methodsStatus: MethodStatus[] = [];
   if (project.selectedMethods) {
     const methodSelectionMatrix: Array<{ enabled: boolean; label: string }> = [
-      { enabled: project.selectedMethods.edgeR, label: 'edgeR' },
+      { enabled: project.selectedMethods.edgeR, label: 'EdgeR' },
       { enabled: project.selectedMethods.deseq2, label: 'DESeq2' },
-      { enabled: project.selectedMethods.limma, label: 'limma' },
+      { enabled: project.selectedMethods.limma, label: 'Limma' },
       { enabled: project.selectedMethods.noiseq, label: 'NOISeq' },
       { enabled: project.selectedMethods.dataAnalysis, label: 'dataAnalysis' },
       { enabled: project.selectedMethods.integrationResults, label: 'integrationResults' },
@@ -1722,12 +1737,14 @@ export const buildStructuredProjectResultsPayload = (
       }
 
       switch (methodConfig.methodLabel) {
-        case 'edgeR':
+        case 'EdgeR':
           return project.selectedMethods.edgeR;
         case 'DESeq2':
           return project.selectedMethods.deseq2;
-        case 'limma':
+        case 'Limma':
           return project.selectedMethods.limma;
+        case 'NOISeq':
+          return project.selectedMethods.noiseq;
         default:
           return false;
       }
@@ -1798,7 +1815,7 @@ export const buildStructuredProjectResultsPayload = (
     }
 
     differentialExpression.push({
-      method: methodConfig.methodLabel as 'edgeR' | 'DESeq2' | 'limma',
+      method: methodConfig.methodLabel,
       comparisons,
     });
   }
