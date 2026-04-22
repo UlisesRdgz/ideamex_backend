@@ -8,7 +8,20 @@ export type ProjectRunStatus = 'pending' | 'running' | 'completed' | 'failed';
 export type ProjectTrend = 'up' | 'down' | 'flat';
 export type DifferentialDirection = 'up' | 'down';
 export type DifferentialMethod = 'EdgeR' | 'DESeq2' | 'Limma' | 'NOISeq';
-export type PlotType = 'boxplot' | 'density' | 'pca' | 'mds' | 'cpm';
+export type PlotType =
+  | 'boxplot'
+  | 'density'
+  | 'pca'
+  | 'mds'
+  | 'cpm'
+  | 'md'
+  | 'plotVolcano'
+  | 'plotMDS'
+  | 'plotSmear'
+  | 'plotMA'
+  | 'plotPCA'
+  | 'plotMD'
+  | '';
 
 export type MethodStatus = {
   method: string;
@@ -48,7 +61,7 @@ export type DifferentialExpressionComparison = {
   upregulated: number;
   downregulated: number;
   significant: number;
-  volcanoPlotUrl?: string;
+  plots: Array<{ type: PlotType; imageUrl: string }>;
   topGenes: Array<{ gene: string; logFC: number; pValue: number }>;
 };
 
