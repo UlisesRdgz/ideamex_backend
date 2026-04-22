@@ -54,6 +54,7 @@ const RESULT_IMAGE_EXTENSION_ALLOWLIST = new Set([
   '.svg',
   '.pdf',
 ]);
+const RESULT_VISUAL_FILE_PATTERN = /\.(png|jpg|jpeg|svg|pdf)$/i;
 const RESULT_IMAGE_PDF_EXTENSION = '.pdf';
 const RESULT_ARCHIVE_ZIP_NAME = 'DiffExpAllResults.zip';
 const RESULT_ARCHIVE_TAR_GZ_NAME = 'DiffExpAllResults.tar.gz';
@@ -266,7 +267,58 @@ const detectStructuredPlotType = (fileName: string): PlotType | null => {
     return 'cpm';
   }
 
+  if (normalized.includes('md')) {
+    return 'md';
+  }
+
   return null;
+};
+
+/**
+ * Infiere tipo de plot para gráficas por comparación (DE).
+ */
+const inferComparisonPlotType = (fileName: string): PlotType => {
+  const normalized = fileName.toLowerCase();
+
+  if (normalized.includes('plotvolcano')) {
+    return 'plotVolcano';
+  }
+  if (normalized.includes('plotmds')) {
+    return 'plotMDS';
+  }
+  if (normalized.includes('plotsmear')) {
+    return 'plotSmear';
+  }
+  if (normalized.includes('plotma')) {
+    return 'plotMA';
+  }
+  if (normalized.includes('plotpca')) {
+    return 'plotPCA';
+  }
+  if (normalized.includes('plotmd')) {
+    return 'plotMD';
+  }
+
+  if (normalized.includes('boxplot') || normalized.includes('box_plot')) {
+    return 'boxplot';
+  }
+  if (normalized.includes('density')) {
+    return 'density';
+  }
+  if (normalized.includes('pca')) {
+    return 'pca';
+  }
+  if (normalized.includes('mds')) {
+    return 'mds';
+  }
+  if (normalized.includes('cpm')) {
+    return 'cpm';
+  }
+  if (normalized.includes('md')) {
+    return 'md';
+  }
+
+  return '';
 };
 
 /**
@@ -337,6 +389,30 @@ const findFirstFileInDirectoryByPattern = (
     .sort((a, b) => a.localeCompare(b));
 
   return files.length > 0 ? files[0] : null;
+};
+
+/**
+ * Devuelve todas las imágenes de una comparación ordenadas por relevancia visual.
+ */
+const findAllComparisonPlotFileNames = (comparisonPath: string): string[] => {
+  if (!fs.existsSync(comparisonPath) || !fs.statSync(comparisonPath).isDirectory()) {
+    return [];
+  }
+
+  const entries = fs.readdirSync(comparisonPath, { withFileTypes: true });
+  const files = entries
+    .filter((entry) => entry.isFile() && RESULT_VISUAL_FILE_PATTERN.test(entry.name))
+    .map((entry) => entry.name);
+
+  files.sort((a, b) => {
+    const scoreDiff = scoreResultImageCandidate(b) - scoreResultImageCandidate(a);
+    if (scoreDiff !== 0) {
+      return scoreDiff;
+    }
+    return a.localeCompare(b);
+  });
+
+  return files;
 };
 
 /**
@@ -1769,10 +1845,7 @@ export const buildStructuredProjectResultsPayload = (
     for (const comparisonName of comparisonNames) {
       const comparisonPath = path.join(methodFolderPath, comparisonName);
       const topFileName = findFirstFileInDirectoryByPattern(comparisonPath, /(_top|top)\.txt$/i);
-      const volcanoFileName = findFirstFileInDirectoryByPattern(
-        comparisonPath,
-        /volcano.*\.(png|jpg|jpeg|svg|pdf)$/i
-      );
+      const plotFileNames = findAllComparisonPlotFileNames(comparisonPath);
       const mainFileName = findFirstFileInDirectoryByPattern(
         comparisonPath,
         /^.*\.txt$/i
@@ -1794,22 +1867,28 @@ export const buildStructuredProjectResultsPayload = (
       const upregulated = mainCounts.upregulated > 0 ? mainCounts.upregulated : upFromTop;
       const downregulated = mainCounts.downregulated > 0 ? mainCounts.downregulated : downFromTop;
       const significant = mainCounts.significant > 0 ? mainCounts.significant : topGenes.length;
+      const plots = Array.from(
+        new Map(
+          plotFileNames.map((plotFileName) => {
+            const imageUrl = buildProjectFileInlineUrl(
+              apiBaseUrl,
+              project.id_project,
+              resolveApiImagePath(
+                resultDir,
+                toPosixPath(path.join(methodConfig.methodResultFolder, comparisonName, plotFileName))
+              )
+            );
+            return [imageUrl, { type: inferComparisonPlotType(plotFileName), imageUrl }];
+          })
+        ).values()
+      );
 
       comparisons.push({
         name: comparisonName,
         upregulated,
         downregulated,
         significant,
-        volcanoPlotUrl: volcanoFileName
-          ? buildProjectFileInlineUrl(
-              apiBaseUrl,
-              project.id_project,
-              resolveApiImagePath(
-                resultDir,
-                toPosixPath(path.join(methodConfig.methodResultFolder, comparisonName, volcanoFileName))
-              )
-            )
-          : undefined,
+        plots,
         topGenes,
       });
     }
