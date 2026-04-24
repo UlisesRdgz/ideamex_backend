@@ -11,7 +11,7 @@ export type NullableDateValue = Date | string | null | undefined;
 
 export interface Sample {
   name: string;
-  batch: string;
+  batch: string | null;
 }
 
 export interface MethodsSelection {

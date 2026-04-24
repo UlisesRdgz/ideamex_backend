@@ -30,7 +30,11 @@
  *           type: string
  *           example: mock_1
  *         batch:
- *           type: string
+ *           nullable: true
+ *           oneOf:
+ *             - type: string
+ *             - type: number
+ *           description: Lote de la muestra. Usa null en todas las muestras para correr sin batch. Si se usa batch, todas las muestras deben tener un valor numérico; se envía a R tal como fue capturado.
  *           example: "0"
  *       additionalProperties: false
  *

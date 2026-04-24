@@ -800,13 +800,19 @@ const normalizeRunProjectPayload = (
     if (typeof sample.name !== 'string' || sample.name.trim().length === 0) {
       return { data: null, error: `samples[${index}].name must be a non-empty string` };
     }
-    if (typeof sample.batch !== 'string' || sample.batch.trim().length === 0) {
-      return { data: null, error: `samples[${index}].batch must be a non-empty string` };
+    if (sample.batch === undefined) {
+      return { data: null, error: `samples[${index}].batch is required; use null when not applicable` };
+    }
+    if (sample.batch !== null && typeof sample.batch !== 'string' && typeof sample.batch !== 'number') {
+      return { data: null, error: `samples[${index}].batch must be a string, number or null` };
+    }
+    if (typeof sample.batch === 'string' && sample.batch.trim().length === 0) {
+      return { data: null, error: `samples[${index}].batch cannot be empty; use null when not applicable` };
     }
 
     samples.push({
       name: sample.name.trim(),
-      batch: sample.batch.trim(),
+      batch: sample.batch === null ? null : String(sample.batch).trim(),
     });
   }
 
@@ -922,28 +928,109 @@ const normalizeRunProjectPayload = (
   };
 };
 
-const buildBatchFromSamples = (samples: FrontSampleLike[]): string | null => {
-  const values: string[] = [];
+type BatchBuildResult = {
+  value: string | null;
+  error?: string;
+};
 
-  for (const sample of samples) {
-    if (!sample || typeof sample !== 'object') {
-      return null;
-    }
-
-    // Si una muestra no trae `batch`, no se puede construir vector consistente.
-    const batchValue = sample.batch;
-    if (batchValue === undefined || batchValue === null || batchValue === '') {
-      return null;
-    }
-
-    values.push(String(batchValue).trim());
-  }
-
-  if (values.length === 0 || values.some((value) => value.length === 0)) {
+const getConditionNameFromSampleName = (sampleName: unknown): string | null => {
+  if (typeof sampleName !== 'string') {
     return null;
   }
 
-  return values.join(',');
+  const trimmed = sampleName.trim();
+  const match = trimmed.match(/^(.+)_[a-zA-Z0-9]+$/);
+  return match ? match[1] : null;
+};
+
+const buildBatchFromSamples = (samples: FrontSampleLike[]): BatchBuildResult => {
+  const values: Array<string | null> = [];
+  const conditions: string[] = [];
+
+  for (const sample of samples) {
+    if (!sample || typeof sample !== 'object') {
+      return { value: null, error: 'samples must contain only objects' };
+    }
+
+    const condition = getConditionNameFromSampleName(sample.name);
+    if (!condition) {
+      return {
+        value: null,
+        error: 'samples.name must follow group_replica format to evaluate batch',
+      };
+    }
+    conditions.push(condition);
+
+    const batchValue = sample.batch;
+    if (batchValue === undefined) {
+      return { value: null, error: 'samples.batch is required; use null when not applicable' };
+    }
+
+    if (batchValue === null) {
+      values.push(null);
+      continue;
+    }
+
+    const normalized = String(batchValue).trim();
+    values.push(normalized.length > 0 ? normalized : null);
+  }
+
+  if (values.length === 0) {
+    return { value: null };
+  }
+
+  const nullCount = values.filter((value) => value === null).length;
+  if (nullCount === values.length) {
+    return { value: null };
+  }
+
+  if (nullCount > 0) {
+    return {
+      value: null,
+      error:
+        'samples.batch must be null for all samples or numeric for all samples; partial batch is not supported by the R pipeline',
+    };
+  }
+
+  const normalizedValues = values.map((value) => value as string);
+  const uniqueBatches = new Set(normalizedValues);
+  if (uniqueBatches.size === 1) {
+    return { value: normalizedValues.join(',') };
+  }
+
+  const sampleCountByBatch = new Map<string, number>();
+  normalizedValues.forEach((batch) => {
+    sampleCountByBatch.set(batch, (sampleCountByBatch.get(batch) || 0) + 1);
+  });
+
+  const hasRepeatedBatch = Array.from(sampleCountByBatch.values()).some((count) => count >= 2);
+  if (!hasRepeatedBatch) {
+    return {
+      value: null,
+      error: 'samples.batch must repeat at least one batch value across two or more samples',
+    };
+  }
+
+  const conditionsByBatch = new Map<string, Set<string>>();
+  normalizedValues.forEach((batch, index) => {
+    const conditionSet = conditionsByBatch.get(batch) || new Set<string>();
+    conditionSet.add(conditions[index]);
+    conditionsByBatch.set(batch, conditionSet);
+  });
+
+  const hasSharedBatchAcrossConditions = Array.from(conditionsByBatch.values()).some(
+    (conditionSet) => conditionSet.size >= 2
+  );
+
+  if (!hasSharedBatchAcrossConditions) {
+    return {
+      value: null,
+      error:
+        'samples.batch is confounded with replica group: at least one batch must contain samples from different replica groups',
+    };
+  }
+
+  return { value: normalizedValues.join(',') };
 };
 
 /**
@@ -1616,11 +1703,14 @@ export const normalizeRunRequest = (
 
   const normalizedBatch = buildBatchFromSamples(runPayload.samples as FrontSampleLike[]);
 
-  if (!normalizedBatch || normalizedBatch.length === 0) {
-    return { data: null, error: 'samples.batch is required to build batch vector' };
+  if (normalizedBatch.error) {
+    return { data: null, error: normalizedBatch.error };
   }
 
-  if (!/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?)*$/.test(normalizedBatch)) {
+  if (
+    normalizedBatch.value !== null &&
+    !/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?)*$/.test(normalizedBatch.value)
+  ) {
     return {
       data: null,
       error: 'samples.batch must be a comma-separated numeric list',
@@ -1635,7 +1725,7 @@ export const normalizeRunRequest = (
         logfc,
         cpm,
         padjust,
-        batch: normalizedBatch,
+        batch: normalizedBatch.value,
         generateZip: true,
         top: runPayload.parameters.top as boolean,
       },

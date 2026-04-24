@@ -448,18 +448,24 @@ export const validateRunAnalysis = [
         }
 
         const row = sample as Record<string, unknown>;
-        // `batch` ahora es obligatorio para mantener paridad con el contrato de muestras.
         if (typeof row.name !== 'string' || row.name.trim().length === 0) {
           throw new Error('sample.name es obligatorio');
         }
 
-        if (row.batch === undefined || row.batch === null || String(row.batch).trim() === '') {
-          // Batch obligatorio para coherencia con validación posterior del archivo.
-          throw new Error('sample.batch es obligatorio');
+        if (row.batch === undefined) {
+          throw new Error('sample.batch es obligatorio, usa null si no aplica');
         }
 
-        if (typeof row.batch !== 'string' && typeof row.batch !== 'number') {
-          throw new Error('sample.batch debe ser string o number');
+        if (
+          row.batch !== null &&
+          typeof row.batch !== 'string' &&
+          typeof row.batch !== 'number'
+        ) {
+          throw new Error('sample.batch debe ser string, number o null');
+        }
+
+        if (typeof row.batch === 'string' && row.batch.trim().length === 0) {
+          throw new Error('sample.batch no puede ser cadena vacía; usa null si no aplica');
         }
       }
 
