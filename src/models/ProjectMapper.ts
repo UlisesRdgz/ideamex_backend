@@ -95,11 +95,11 @@ const normalizeSamples = (value: unknown): Sample[] => {
     const name = toStrictNonEmptyString(sample.name, `samples[${index}].name`);
     const batch =
       sample.batch === undefined || sample.batch === null
-        ? ''
+        ? null
         : String(sample.batch).trim();
 
-    if (batch.length === 0) {
-      throw new Error(`Invalid samples[${index}].batch: expected non-empty string`);
+    if (batch !== null && batch.length === 0) {
+      throw new Error(`Invalid samples[${index}].batch: expected non-empty string or null`);
     }
 
     return { name, batch };
