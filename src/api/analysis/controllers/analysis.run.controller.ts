@@ -14,6 +14,7 @@ import {
   executeAnalysisInBackground,
   getProjectsBasePath,
   normalizeRunRequest,
+  applySampleNameChangesToInputFile,
   resolveProjectAbsolutePath,
   validateSampleNamesAndBatch,
 } from './analysis.shared.controller';
@@ -66,6 +67,15 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
 
     if (!fs.existsSync(inputPath)) {
       sendErrorResponse(res, 'Input file not found on server', null, 404);
+      return;
+    }
+
+    const sampleNameUpdate = applySampleNameChangesToInputFile(
+      inputPath,
+      runProjectPayload.samples as Array<{ name?: unknown; batch?: unknown; originalName?: unknown }>
+    );
+    if (!sampleNameUpdate.ok) {
+      sendErrorResponse(res, sampleNameUpdate.error, null, 400);
       return;
     }
 
