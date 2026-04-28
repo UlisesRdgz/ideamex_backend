@@ -43,7 +43,8 @@ export interface AnalysisRunParams {
    */
   batch: string | null;
   /**
-   * Indica si el pipeline debe generar archivo ZIP de resultados.
+   * Indica si el pipeline de R debe generar su archivo tar.gz de resultados.
+   * El ZIP descargable de la API se genera bajo demanda en el endpoint de resultados.
    */
   generateZip: boolean;
   /**

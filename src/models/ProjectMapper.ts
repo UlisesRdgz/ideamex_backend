@@ -102,7 +102,20 @@ const normalizeSamples = (value: unknown): Sample[] => {
       throw new Error(`Invalid samples[${index}].batch: expected non-empty string or null`);
     }
 
-    return { name, batch };
+    const originalName =
+      sample.originalName === undefined || sample.originalName === null
+        ? undefined
+        : String(sample.originalName).trim();
+
+    if (originalName !== undefined && originalName.length === 0) {
+      throw new Error(`Invalid samples[${index}].originalName: expected non-empty string`);
+    }
+
+    return {
+      name,
+      batch,
+      ...(originalName !== undefined ? { originalName } : {}),
+    };
   });
 };
 

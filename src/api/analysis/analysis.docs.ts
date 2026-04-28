@@ -29,6 +29,10 @@
  *         name:
  *           type: string
  *           example: mock_1
+ *         originalName:
+ *           type: string
+ *           description: Cabecera original en el archivo de conteos. Se envía solo cuando el usuario renombró la muestra; si se omite, se usa el mismo valor de name.
+ *           example: DMSO_1
  *         batch:
  *           nullable: true
  *           oneOf:
@@ -565,20 +569,16 @@
  *   get:
  *     tags: [Analysis]
  *     operationId: downloadProjectResultsArchive
- *     summary: Descarga archivo comprimido con todos los resultados
+ *     summary: Descarga ZIP con todos los resultados
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - $ref: '#/components/parameters/ProjectIdParam'
  *     responses:
  *       200:
- *         description: Archivo comprimido enviado correctamente.
+ *         description: ZIP enviado correctamente.
  *         content:
  *           application/zip:
- *             schema:
- *               type: string
- *               format: binary
- *           application/gzip:
  *             schema:
  *               type: string
  *               format: binary

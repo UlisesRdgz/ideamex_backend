@@ -13,6 +13,7 @@
 export interface FrontSampleLike {
   name?: unknown;
   batch?: unknown;
+  originalName?: unknown;
 }
 
 /**

@@ -34,6 +34,7 @@ import {
 import { type ProjectRecord } from '../../../models/Project';
 
 const RUN_LOG_FILE = 'RunSummary.log';
+const SAMPLE_NAME_CHANGES_LOG_FILE = 'SampleNameChanges.log';
 const SAMPLE_NAME_PATTERN = /^.+_[a-zA-Z0-9]+$/;
 const RESULT_FILE_EXTENSION_ALLOWLIST = new Set([
   '.txt',
@@ -57,7 +58,6 @@ const RESULT_IMAGE_EXTENSION_ALLOWLIST = new Set([
 const RESULT_VISUAL_FILE_PATTERN = /\.(png|jpg|jpeg|svg|pdf)$/i;
 const RESULT_IMAGE_PDF_EXTENSION = '.pdf';
 const RESULT_ARCHIVE_ZIP_NAME = 'DiffExpAllResults.zip';
-const RESULT_ARCHIVE_TAR_GZ_NAME = 'DiffExpAllResults.tar.gz';
 const MIME_BY_EXTENSION: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
   '.log': 'text/plain; charset=utf-8',
@@ -81,7 +81,7 @@ interface ProjectResultFile {
 interface ProjectResultArchive {
   absolute_path: string;
   mime_type: string;
-  extension: 'zip' | 'tar.gz';
+  extension: 'zip';
 }
 
 interface ProjectCoverCandidate {
@@ -789,7 +789,7 @@ const normalizeRunProjectPayload = (
       return { data: null, error: `samples[${index}] must be an object` };
     }
 
-    const sampleUnsupportedKeys = findUnsupportedKeys(sample, ['name', 'batch']);
+    const sampleUnsupportedKeys = findUnsupportedKeys(sample, ['name', 'batch', 'originalName']);
     if (sampleUnsupportedKeys.length > 0) {
       return {
         data: null,
@@ -799,6 +799,12 @@ const normalizeRunProjectPayload = (
 
     if (typeof sample.name !== 'string' || sample.name.trim().length === 0) {
       return { data: null, error: `samples[${index}].name must be a non-empty string` };
+    }
+    if (
+      sample.originalName !== undefined &&
+      (typeof sample.originalName !== 'string' || sample.originalName.trim().length === 0)
+    ) {
+      return { data: null, error: `samples[${index}].originalName must be a non-empty string` };
     }
     if (sample.batch === undefined) {
       return { data: null, error: `samples[${index}].batch is required; use null when not applicable` };
@@ -813,6 +819,7 @@ const normalizeRunProjectPayload = (
     samples.push({
       name: sample.name.trim(),
       batch: sample.batch === null ? null : String(sample.batch).trim(),
+      ...(sample.originalName !== undefined ? { originalName: sample.originalName.trim() } : {}),
     });
   }
 
@@ -1418,9 +1425,8 @@ const tryCreateProjectResultZip = (resultDir: string): string | null => {
 };
 
 /**
- * Resuelve el archivo comprimido de resultados para descarga:
- * 1) zip existente o generado on-demand
- * 2) fallback al tar.gz generado por el pipeline de R.
+ * Resuelve el archivo ZIP de resultados para descarga.
+ * Si no existe, se genera bajo demanda.
  */
 export const resolveProjectResultArchive = (resultDir: string): ProjectResultArchive | null => {
   const zipPath = tryCreateProjectResultZip(resultDir);
@@ -1429,15 +1435,6 @@ export const resolveProjectResultArchive = (resultDir: string): ProjectResultArc
       absolute_path: zipPath,
       mime_type: 'application/zip',
       extension: 'zip',
-    };
-  }
-
-  const tarPath = path.join(resultDir, RESULT_ARCHIVE_TAR_GZ_NAME);
-  if (fs.existsSync(tarPath) && fs.statSync(tarPath).isFile()) {
-    return {
-      absolute_path: tarPath,
-      mime_type: 'application/gzip',
-      extension: 'tar.gz',
     };
   }
 
@@ -1496,6 +1493,142 @@ const parseCountTableHeader = (
   return { sampleNames, conditionNames };
 };
 
+interface SampleNameChange {
+  originalName: string;
+  updatedName: string;
+}
+
+/**
+ * Sustituye las cabeceras de muestra del archivo original antes de ejecutar R.
+ * `originalName` apunta a la cabecera actual del archivo; `name` es la cabecera final.
+ */
+export const applySampleNameChangesToInputFile = (
+  inputPath: string,
+  samples: FrontSampleLike[]
+): { ok: true; changes: SampleNameChange[] } | { ok: false; error: string } => {
+  let content = '';
+  try {
+    content = fs.readFileSync(inputPath, 'utf-8');
+  } catch {
+    return { ok: false, error: 'Unable to read count table from server storage' };
+  }
+
+  const firstLineEnd = content.search(/\r?\n/);
+  const firstLine = firstLineEnd >= 0 ? content.slice(0, firstLineEnd) : content;
+  const rest = firstLineEnd >= 0 ? content.slice(firstLineEnd) : '';
+  const normalizedFirstLine = firstLine.replace(/^\uFEFF/, '');
+  const separator = detectCountTableSeparator(normalizedFirstLine);
+
+  if (!normalizedFirstLine.trim() || !separator) {
+    return { ok: false, error: 'Input count table header is invalid (missing separator)' };
+  }
+
+  const columns = normalizedFirstLine.split(separator).map((value) => value.trim());
+  const headerSampleNames = columns.slice(1).filter((value) => value.length > 0);
+
+  if (columns.length < 2 || headerSampleNames.length === 0) {
+    return { ok: false, error: 'Input count table header is invalid (missing sample columns)' };
+  }
+
+  if (samples.length !== headerSampleNames.length) {
+    return {
+      ok: false,
+      error: `samples length (${samples.length}) must match count table samples (${headerSampleNames.length})`,
+    };
+  }
+
+  const updatedNames = new Set<string>();
+  const originalNames = new Set<string>();
+  const updatedNameByOriginal = new Map<string, string>();
+  const changes: SampleNameChange[] = [];
+
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index];
+    if (!sample || typeof sample !== 'object') {
+      return { ok: false, error: `samples[${index}] must be an object` };
+    }
+
+    const updatedName = typeof sample.name === 'string' ? sample.name.trim() : '';
+    const originalName =
+      typeof sample.originalName === 'string' && sample.originalName.trim().length > 0
+        ? sample.originalName.trim()
+        : updatedName;
+
+    if (!updatedName) {
+      return { ok: false, error: `samples[${index}].name must be a non-empty string` };
+    }
+
+    if (originalName !== headerSampleNames[index]) {
+      return {
+        ok: false,
+        error:
+          `samples must follow count table header order; expected originalName "${headerSampleNames[index]}" at index ${index}`,
+      };
+    }
+
+    if (updatedNames.has(updatedName)) {
+      return { ok: false, error: `Duplicate sample name after rename: ${updatedName}` };
+    }
+    updatedNames.add(updatedName);
+
+    if (originalNames.has(originalName)) {
+      return { ok: false, error: `Duplicate original sample name: ${originalName}` };
+    }
+    originalNames.add(originalName);
+    updatedNameByOriginal.set(originalName, updatedName);
+
+    if (originalName !== updatedName) {
+      changes.push({ originalName, updatedName });
+    }
+  }
+
+  const headerNameSet = new Set(headerSampleNames);
+  const unknownOriginals = Array.from(originalNames).filter((name) => !headerNameSet.has(name));
+  if (unknownOriginals.length > 0) {
+    return {
+      ok: false,
+      error: `originalName values were not found in count table header: ${unknownOriginals.join(', ')}`,
+    };
+  }
+
+  const missingHeaderSamples = headerSampleNames.filter((name) => !originalNames.has(name));
+  if (missingHeaderSamples.length > 0) {
+    return {
+      ok: false,
+      error: `Count table samples missing in request: ${missingHeaderSamples.join(', ')}`,
+    };
+  }
+
+  if (changes.length === 0) {
+    return { ok: true, changes };
+  }
+
+  const updatedHeaderSampleNames = headerSampleNames.map((originalName) => {
+    return updatedNameByOriginal.get(originalName) || originalName;
+  });
+  const updatedFirstLine = [columns[0], ...updatedHeaderSampleNames].join(separator);
+
+  try {
+    fs.writeFileSync(inputPath, `${updatedFirstLine}${rest}`, 'utf-8');
+
+    const logPath = path.join(path.dirname(inputPath), SAMPLE_NAME_CHANGES_LOG_FILE);
+    const logLines = [
+      `created_at=${new Date().toISOString()}`,
+      `input_file=${path.basename(inputPath)}`,
+      '',
+      ...changes.map((change) => `${change.originalName} -> ${change.updatedName}`),
+      '',
+      JSON.stringify({ changes }, null, 2),
+      '',
+    ];
+    fs.writeFileSync(logPath, logLines.join('\n'), 'utf-8');
+  } catch {
+    return { ok: false, error: 'Unable to write updated sample names to project files' };
+  }
+
+  return { ok: true, changes };
+};
+
 /**
  * Valida reglas mínimas de consistencia entre:
  * - formato de nombres de muestra,
@@ -1531,27 +1664,32 @@ export const validateSampleNamesAndBatch = (
     };
   }
 
-  // Enforce del patrón `condition_sample` para que el pipeline deduzca grupos correctamente.
+  const duplicatedSampleNames = metadata.sampleNames.filter((sample, index) => {
+    return metadata?.sampleNames.indexOf(sample) !== index;
+  });
+  if (duplicatedSampleNames.length > 0) {
+    return {
+      ok: false,
+      error: `Duplicate sample names are not allowed: ${Array.from(new Set(duplicatedSampleNames)).join(', ')}`,
+    };
+  }
+
+  // Enforce del patrón `group_replica` para que el pipeline deduzca grupos correctamente.
   const invalidSampleNames = metadata.sampleNames.filter((sample) => !SAMPLE_NAME_PATTERN.test(sample));
   if (invalidSampleNames.length > 0) {
     return {
       ok: false,
       error:
-        'Invalid sample names. Expected pattern "condition_sample" (examples: Ctrl_1,Treat_1)',
+        'Invalid sample names. Expected pattern "group_replica" (examples: Ctrl_1,Treat_1)',
     };
   }
 
-  // Si se usan métodos DE (1-4), debe haber al menos dos condiciones comparables.
-  const hasPairwiseMethods = /[1-4]/.test(runParams.methods);
-  if (hasPairwiseMethods) {
-    const uniqueConditions = new Set(metadata.conditionNames);
-    if (uniqueConditions.size < 2) {
-      return {
-        ok: false,
-        error:
-          'At least 2 different conditions are required in sample names for differential expression methods',
-      };
-    }
+  const uniqueConditions = new Set(metadata.conditionNames);
+  if (uniqueConditions.size < 2) {
+    return {
+      ok: false,
+      error: 'At least 2 different replica groups are required in sample names',
+    };
   }
 
   if (runParams.batch !== null) {
@@ -1680,6 +1818,16 @@ export const normalizeRunRequest = (
     return { data: null, error: 'selectedMethods must include at least one method from 1 to 5' };
   }
 
+  const sampleGroups = (runPayload.samples as FrontSampleLike[])
+    .map((sample) => getConditionNameFromSampleName(sample.name))
+    .filter((group): group is string => Boolean(group));
+  if (new Set(sampleGroups).size < 2) {
+    return {
+      data: null,
+      error: 'At least 2 different replica groups are required in sample names',
+    };
+  }
+
   if (methods.includes('6') && !/[1-4]/.test(methods)) {
     return {
       data: null,
@@ -1726,7 +1874,7 @@ export const normalizeRunRequest = (
         cpm,
         padjust,
         batch: normalizedBatch.value,
-        generateZip: true,
+        generateZip: false,
         top: runPayload.parameters.top as boolean,
       },
     },

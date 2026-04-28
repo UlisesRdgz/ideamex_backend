@@ -452,6 +452,13 @@ export const validateRunAnalysis = [
           throw new Error('sample.name es obligatorio');
         }
 
+        if (
+          row.originalName !== undefined &&
+          (typeof row.originalName !== 'string' || row.originalName.trim().length === 0)
+        ) {
+          throw new Error('sample.originalName debe ser string no vacío cuando se envía');
+        }
+
         if (row.batch === undefined) {
           throw new Error('sample.batch es obligatorio, usa null si no aplica');
         }
