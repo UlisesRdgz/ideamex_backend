@@ -171,6 +171,13 @@ export const handleDeleteProject = async (req: Request, res: Response): Promise<
   try {
     const user = req.user;
     const projectId = Number(req.params.projectId);
+    const rawForce = req.query.force;
+    const rawForceValue = Array.isArray(rawForce) ? rawForce[0] : rawForce;
+    const normalizedForce = String(rawForceValue ?? '').trim().toLowerCase();
+    const forceDelete =
+      normalizedForce === 'true' ||
+      normalizedForce === '1' ||
+      normalizedForce === 'yes';
 
     if (!user || typeof user.id_user !== 'number') {
       sendErrorResponse(res, 'Missing or invalid user information from token', null, 400);
@@ -189,10 +196,10 @@ export const handleDeleteProject = async (req: Request, res: Response): Promise<
       return;
     }
 
-    if (project.status === 'PROCESSING') {
+    if (project.status === 'PROCESSING' && !forceDelete) {
       sendErrorResponse(
         res,
-        'Project cannot be deleted while analysis is running',
+        'Project cannot be deleted while analysis is running. Use force=true to force delete.',
         null,
         409
       );

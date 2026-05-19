@@ -12,6 +12,11 @@ import {
 } from '../controllers/analysis.projects.controller';
 import { uploadProject } from '../../../config/multer';
 import { requireUser } from '../../auth/auth.middleware';
+import {
+  validateDeleteProjectQuery,
+  validateProjectIdParam,
+  validateRequest,
+} from '../../../middlewares/validation.middleware';
 
 const projectsRouter = Router();
 
@@ -31,6 +36,9 @@ projectsRouter.get(
 projectsRouter.delete(
   '/project/:projectId',
   requireUser,
+  validateProjectIdParam,
+  validateDeleteProjectQuery,
+  validateRequest,
   handleDeleteProject
 );
 
