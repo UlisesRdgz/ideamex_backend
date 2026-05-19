@@ -34,7 +34,6 @@ import {
 import { type ProjectRecord } from '../../../models/Project';
 
 const RUN_LOG_FILE = 'RunSummary.log';
-const SAMPLE_NAME_CHANGES_LOG_FILE = 'SampleNameChanges.log';
 const SAMPLE_NAME_PATTERN = /^.+_[a-zA-Z0-9]+$/;
 const RESULT_FILE_EXTENSION_ALLOWLIST = new Set([
   '.txt',
@@ -1610,20 +1609,8 @@ export const applySampleNameChangesToInputFile = (
 
   try {
     fs.writeFileSync(inputPath, `${updatedFirstLine}${rest}`, 'utf-8');
-
-    const logPath = path.join(path.dirname(inputPath), SAMPLE_NAME_CHANGES_LOG_FILE);
-    const logLines = [
-      `created_at=${new Date().toISOString()}`,
-      `input_file=${path.basename(inputPath)}`,
-      '',
-      ...changes.map((change) => `${change.originalName} -> ${change.updatedName}`),
-      '',
-      JSON.stringify({ changes }, null, 2),
-      '',
-    ];
-    fs.writeFileSync(logPath, logLines.join('\n'), 'utf-8');
   } catch {
-    return { ok: false, error: 'Unable to write updated sample names to project files' };
+    return { ok: false, error: 'Unable to write updated sample names to input file' };
   }
 
   return { ok: true, changes };
@@ -1789,6 +1776,50 @@ const findFailureInRunSummaryLog = (outputDir: string): string | null => {
 };
 
 /**
+ * Inserta los cambios de nombres de muestra dentro de `RunSummary.log`,
+ * justo antes de la sección que imprime los parámetros de llamada al programa.
+ */
+const insertSampleNameChangesIntoRunSummaryLog = (
+  outputDir: string,
+  changes: SampleNameChange[]
+): void => {
+  if (changes.length === 0) {
+    return;
+  }
+
+  const logPath = path.join(outputDir, RUN_LOG_FILE);
+  if (!fs.existsSync(logPath)) {
+    return;
+  }
+
+  const content = fs.readFileSync(logPath, 'utf-8');
+  if (content.includes('<SAMPLE NAME CHANGES>')) {
+    return;
+  }
+
+  const section = [
+    '*************************',
+    '<SAMPLE NAME CHANGES>',
+    '************************* ',
+    ...changes.map(
+      (change) =>
+        `[1] "      ${change.originalName} renamed to ${change.updatedName} .......................... OK"`
+    ),
+    '',
+  ].join('\n');
+
+  const programCallMatch = content.match(/\*+\r?\n<PROGRAM CALL PARAMETERS>\r?\n\*+/);
+  if (!programCallMatch || programCallMatch.index === undefined) {
+    fs.writeFileSync(logPath, `${content.trimEnd()}\n${section}`, 'utf-8');
+    return;
+  }
+
+  const insertAt = programCallMatch.index;
+  const updatedContent = `${content.slice(0, insertAt)}${section}${content.slice(insertAt)}`;
+  fs.writeFileSync(logPath, updatedContent, 'utf-8');
+};
+
+/**
  * Valida y normaliza payload de ejecución:
  * - acepta solo formato Project estricto,
  * - rechaza llaves extra,
@@ -1891,6 +1922,7 @@ export const executeAnalysisInBackground = (params: {
   inputPath: string;
   outputDir: string;
   runtime: AnalysisRuntimeCommand;
+  sampleNameChanges: SampleNameChange[];
 }): void => {
   const child = spawn(params.runtime.command, params.runtime.args, {
     cwd: params.outputDir,
@@ -1945,6 +1977,8 @@ export const executeAnalysisInBackground = (params: {
   });
 
   child.on('close', (code) => {
+    insertSampleNameChangesIntoRunSummaryLog(params.outputDir, params.sampleNameChanges);
+
     const runStatus = parseRunStatusFromStdout(stdout);
     const runLogFailure = findFailureInRunSummaryLog(params.outputDir);
 

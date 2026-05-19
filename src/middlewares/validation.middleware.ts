@@ -490,6 +490,26 @@ export const validateProjectIdParam = [
 ];
 
 /**
+ * Reglas para validar query params del endpoint de borrado de proyectos.
+ */
+export const validateDeleteProjectQuery = [
+  query('force')
+    .optional()
+    .custom((value) => {
+      if (typeof value !== 'string' && typeof value !== 'boolean') {
+        throw new Error('force debe ser booleano');
+      }
+
+      const normalized = String(value).trim().toLowerCase();
+      const allowed = ['true', 'false', '1', '0', 'yes', 'no'];
+      if (!allowed.includes(normalized)) {
+        throw new Error('force debe ser true/false/1/0/yes/no');
+      }
+      return true;
+    }),
+];
+
+/**
  * Reglas para validar query params del endpoint de archivos de resultados.
  */
 export const validateResultFileQuery = [

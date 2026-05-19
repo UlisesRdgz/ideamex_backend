@@ -115,6 +115,7 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       inputPath,
       outputDir,
       runtime: runtimeBuild.runtime,
+      sampleNameChanges: sampleNameUpdate.changes,
     });
 
     sendSuccessResponse(

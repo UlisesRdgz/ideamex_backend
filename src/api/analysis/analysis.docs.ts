@@ -20,6 +20,13 @@
  *         type: integer
  *         minimum: 1
  *       description: ID del proyecto.
+ *     ForceDeleteQueryParam:
+ *       in: query
+ *       name: force
+ *       required: false
+ *       schema:
+ *         type: boolean
+ *       description: Si es true, permite borrar el proyecto aunque esté en PROCESSING.
  *
  *   schemas:
  *     AnalysisSampleInput:
@@ -459,6 +466,7 @@
  *       - bearerAuth: []
  *     parameters:
  *       - $ref: '#/components/parameters/ProjectIdParam'
+ *       - $ref: '#/components/parameters/ForceDeleteQueryParam'
  *     responses:
  *       200:
  *         description: Proyecto eliminado correctamente.
