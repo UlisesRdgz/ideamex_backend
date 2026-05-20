@@ -34,6 +34,7 @@ import {
 import { type ProjectRecord } from '../../../models/Project';
 
 const RUN_LOG_FILE = 'RunSummary.log';
+const BACKEND_FAILURE_LOG_FILE = 'BackendRunError.log';
 const SAMPLE_NAME_PATTERN = /^.+_[a-zA-Z0-9]+$/;
 const RESULT_FILE_EXTENSION_ALLOWLIST = new Set([
   '.txt',
@@ -1820,6 +1821,47 @@ const insertSampleNameChangesIntoRunSummaryLog = (
 };
 
 /**
+ * Persiste un log de fallo del backend cuando la corrida no alcanza a generar `RunSummary.log`.
+ * Esto cubre errores de `spawn`, `docker exec` o problemas de runtime previos a la ejecución en R.
+ */
+const writeBackendFailureLog = (params: {
+  outputDir: string;
+  projectId: number;
+  userId: number;
+  command: string;
+  args: string[];
+  detail: string;
+  stdout: string;
+  stderr: string;
+}): void => {
+  try {
+    const logPath = path.join(params.outputDir, BACKEND_FAILURE_LOG_FILE);
+    const content = [
+      `timestamp=${new Date().toISOString()}`,
+      `project_id=${params.projectId}`,
+      `user_id=${params.userId}`,
+      `cwd=${params.outputDir}`,
+      `command=${params.command}`,
+      `args=${JSON.stringify(params.args)}`,
+      '',
+      '[detail]',
+      params.detail || '(empty)',
+      '',
+      '[stdout]',
+      params.stdout || '(empty)',
+      '',
+      '[stderr]',
+      params.stderr || '(empty)',
+      '',
+    ].join('\n');
+
+    fs.writeFileSync(logPath, content, 'utf-8');
+  } catch (error) {
+    console.error('[ANALYSIS] Unable to write backend failure log:', error);
+  }
+};
+
+/**
  * Valida y normaliza payload de ejecución:
  * - acepta solo formato Project estricto,
  * - rechaza llaves extra,
@@ -1954,6 +1996,29 @@ export const executeAnalysisInBackground = (params: {
     }
 
     settled = true;
+    const detail = sanitizeErrorMessage(message);
+    const sanitizedStdout = sanitizeErrorMessage(stdout);
+    const sanitizedStderr = sanitizeErrorMessage(stderr);
+
+    console.error(`[ANALYSIS] Run failed for project ${params.projectId}: ${detail}`, {
+      command: params.runtime.command,
+      args: params.runtime.args,
+      cwd: params.outputDir,
+      stdout: sanitizedStdout,
+      stderr: sanitizedStderr,
+    });
+
+    writeBackendFailureLog({
+      outputDir: params.outputDir,
+      projectId: params.projectId,
+      userId: params.userId,
+      command: params.runtime.command,
+      args: params.runtime.args,
+      detail,
+      stdout: sanitizedStdout,
+      stderr: sanitizedStderr,
+    });
+
     void markProjectRunFailed(params.projectId, params.userId).catch((dbError) => {
       console.error('[ANALYSIS] Error saving failure status:', dbError);
     });
