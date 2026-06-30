@@ -21,46 +21,6 @@ import {
   validateSampleNamesAndBatch,
 } from './analysis.shared.controller';
 
-const hydrateOriginalSampleNamesFromProject = (
-  runSamples: Array<{ name?: unknown; batch?: unknown; originalName?: unknown }>,
-  projectSamples: Array<{ name?: string; batch?: string | null; originalName?: string }> | null
-): Array<{ name?: unknown; batch?: unknown; originalName?: unknown }> => {
-  if (!projectSamples || projectSamples.length === 0) {
-    return runSamples;
-  }
-
-  const projectSampleByCurrentName = new Map<string, { originalName?: string }>();
-  for (const sample of projectSamples) {
-    if (!sample || typeof sample.name !== 'string' || sample.name.trim().length === 0) {
-      continue;
-    }
-    projectSampleByCurrentName.set(sample.name.trim(), sample);
-  }
-
-  return runSamples.map((sample, index) => {
-    if (
-      sample &&
-      typeof sample.originalName === 'string' &&
-      sample.originalName.trim().length > 0
-    ) {
-      return sample;
-    }
-
-    const currentName = typeof sample?.name === 'string' ? sample.name.trim() : '';
-    const fromProjectByName = currentName ? projectSampleByCurrentName.get(currentName) : undefined;
-    const fromProjectByIndex = !fromProjectByName && index < projectSamples.length ? projectSamples[index] : undefined;
-    const originalName =
-      typeof fromProjectByName?.originalName === 'string' && fromProjectByName.originalName.trim().length > 0
-        ? fromProjectByName.originalName.trim()
-        : typeof fromProjectByIndex?.originalName === 'string' &&
-            fromProjectByIndex.originalName.trim().length > 0
-          ? fromProjectByIndex.originalName.trim()
-          : undefined;
-
-    return originalName ? { ...sample, originalName } : sample;
-  });
-};
-
 /**
  * Controlador para iniciar la corrida de análisis de un proyecto.
  * Una vez iniciada, el proyecto queda bloqueado y no puede modificarse.
@@ -99,10 +59,6 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
     }
     const runParams = parsed.data.runParams;
     const runProjectPayload = parsed.data.runPayload;
-    runProjectPayload.samples = hydrateOriginalSampleNamesFromProject(
-      runProjectPayload.samples as Array<{ name?: unknown; batch?: unknown; originalName?: unknown }>,
-      project.samples
-    ) as typeof runProjectPayload.samples;
 
     const basePath = getProjectsBasePath();
     const inputPath = resolveProjectAbsolutePath(basePath, project.path);
