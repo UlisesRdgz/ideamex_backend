@@ -1857,34 +1857,59 @@ const cleanRunLogLine = (line: string): string => {
 
 /**
  * Busca señales de falla dentro de `RunSummary.log` generado por el pipeline.
- * Si detecta una línea crítica, devuelve un mensaje explicativo.
+ * Distingue entre fallas críticas y warnings de salidas opcionales.
  */
-const findFailureInRunSummaryLog = (outputDir: string): string | null => {
+const NON_CRITICAL_RUN_LOG_FAILURE_PATTERNS: RegExp[] = [
+  /\bboxplotnorm\b.*\bfailed\b/i,
+  /\bdensitiesplot\b.*\bfailed\b/i,
+  /\bcpmplot\b.*\bfailed\b/i,
+  /\bmds(plot)?\b.*\bfailed\b/i,
+  /\bpca(plot)?\b.*\bfailed\b/i,
+  /\bvenndiagram\b.*\bfailed\b/i,
+  /\bupset plot\b.*\bfailed\b/i,
+  /\brunheatmap\b.*\bfailed\b/i,
+  /"\s*abundances\s*".*\bfailed\b/i,
+  /"\s*logfc\s*".*\bfailed\b/i,
+  /"\s*pval\s*".*\bfailed\b/i,
+];
+
+const isNonCriticalRunLogFailure = (line: string): boolean => {
+  return NON_CRITICAL_RUN_LOG_FAILURE_PATTERNS.some((pattern) => pattern.test(line));
+};
+
+const findFailuresInRunSummaryLog = (
+  outputDir: string
+): { critical: string | null; warnings: string[] } => {
   const logPath = path.join(outputDir, RUN_LOG_FILE);
   if (!fs.existsSync(logPath)) {
-    return null;
+    return { critical: null, warnings: [] };
   }
 
   const logContent = fs.readFileSync(logPath, 'utf-8');
   const lines = logContent.split(/\r?\n/).map(cleanRunLogLine).filter((line) => line.length > 0);
+  const warnings = lines.filter((line) => /\bfailed\b/i.test(line) && isNonCriticalRunLogFailure(line));
 
   // Patrones que representan fallos funcionales del pipeline aunque el proceso haya terminado.
-  const firstFailureLine = lines.find((line) => {
-    return (
+  const firstCriticalFailureLine = lines.find((line) => {
+    const isFailureSignal =
       /\bfailed\b/i.test(line) ||
       /-----\s*error\s*-----/i.test(line) ||
       /execution halted/i.test(line) ||
       /is not installed/i.test(line) ||
       /unable to read count table/i.test(line) ||
-      /count table has/i.test(line)
-    );
+      /count table has/i.test(line);
+
+    return isFailureSignal && !isNonCriticalRunLogFailure(line);
   });
 
-  if (!firstFailureLine) {
-    return null;
+  if (!firstCriticalFailureLine) {
+    return { critical: null, warnings };
   }
 
-  return `RunSummary.log indicates failure: ${firstFailureLine}`;
+  return {
+    critical: `RunSummary.log indicates failure: ${firstCriticalFailureLine}`,
+    warnings,
+  };
 };
 
 /**
@@ -1935,15 +1960,16 @@ const insertSampleNameChangesIntoRunSummaryLog = (
  * Persiste un log de fallo del backend cuando la corrida no alcanza a generar `RunSummary.log`.
  * Esto cubre errores de `spawn`, `docker exec` o problemas de runtime previos a la ejecución en R.
  */
-const writeBackendFailureLog = (params: {
+const writeBackendRunLog = (params: {
   outputDir: string;
   projectId: number;
   userId: number;
-  command: string;
-  args: string[];
+  level: 'failure' | 'warning';
+  command?: string;
+  args?: string[];
   detail: string;
-  stdout: string;
-  stderr: string;
+  stdout?: string;
+  stderr?: string;
 }): void => {
   try {
     const logPath = path.join(params.outputDir, BACKEND_FAILURE_LOG_FILE);
@@ -1951,24 +1977,24 @@ const writeBackendFailureLog = (params: {
       `timestamp=${new Date().toISOString()}`,
       `project_id=${params.projectId}`,
       `user_id=${params.userId}`,
-      `cwd=${params.outputDir}`,
-      `command=${params.command}`,
-      `args=${JSON.stringify(params.args)}`,
+      `level=${params.level}`,
+      ...(params.command ? [`cwd=${params.outputDir}`, `command=${params.command}`] : []),
+      ...(params.args ? [`args=${JSON.stringify(params.args)}`] : []),
       '',
       '[detail]',
       params.detail || '(empty)',
-      '',
-      '[stdout]',
-      params.stdout || '(empty)',
-      '',
-      '[stderr]',
-      params.stderr || '(empty)',
+      ...(params.stdout !== undefined
+        ? ['', '[stdout]', params.stdout || '(empty)']
+        : []),
+      ...(params.stderr !== undefined
+        ? ['', '[stderr]', params.stderr || '(empty)']
+        : []),
       '',
     ].join('\n');
 
     fs.writeFileSync(logPath, content, 'utf-8');
   } catch (error) {
-    console.error('[ANALYSIS] Unable to write backend failure log:', error);
+    console.error('[ANALYSIS] Unable to write backend run log:', error);
   }
 };
 
@@ -2119,10 +2145,11 @@ export const executeAnalysisInBackground = (params: {
       stderr: sanitizedStderr,
     });
 
-    writeBackendFailureLog({
+    writeBackendRunLog({
       outputDir: params.outputDir,
       projectId: params.projectId,
       userId: params.userId,
+      level: 'failure',
       command: params.runtime.command,
       args: params.runtime.args,
       detail,
@@ -2156,7 +2183,18 @@ export const executeAnalysisInBackground = (params: {
     insertSampleNameChangesIntoRunSummaryLog(params.outputDir, params.sampleNameChanges);
 
     const runStatus = parseRunStatusFromStdout(stdout);
-    const runLogFailure = findFailureInRunSummaryLog(params.outputDir);
+    const runLogInspection = findFailuresInRunSummaryLog(params.outputDir);
+    const runLogFailure = runLogInspection.critical;
+
+    if (runLogInspection.warnings.length > 0) {
+      writeBackendRunLog({
+        outputDir: params.outputDir,
+        projectId: params.projectId,
+        userId: params.userId,
+        level: 'warning',
+        detail: runLogInspection.warnings.join('\n'),
+      });
+    }
 
     // Éxito estricto: código 0 + sin runStatus de error + sin errores en RunSummary.log.
     if (code === 0 && (runStatus === 0 || runStatus === null) && !runLogFailure) {
