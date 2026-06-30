@@ -950,7 +950,7 @@ const getConditionNameFromSampleName = (sampleName: unknown): string | null => {
   return match ? match[1] : null;
 };
 
-const buildBatchFromSamples = (samples: FrontSampleLike[]): BatchBuildResult => {
+export const buildBatchFromSamples = (samples: FrontSampleLike[]): BatchBuildResult => {
   const values: Array<string | null> = [];
   const conditions: string[] = [];
 
@@ -1498,6 +1498,93 @@ interface SampleNameChange {
   updatedName: string;
 }
 
+const getTrimmedSampleName = (value: unknown): string => {
+  return typeof value === 'string' ? value.trim() : '';
+};
+
+/**
+ * Alinea el payload de muestras al orden real del header del archivo de conteos.
+ * Permite que el frontend envíe muestras reordenadas siempre que mantenga un
+ * identificador resolvible por `originalName` o por `name` cuando no hubo rename.
+ */
+export const alignSamplesToCountTableHeader = (
+  inputPath: string,
+  samples: FrontSampleLike[]
+): { ok: true; samples: FrontSampleLike[]; headerSampleNames: string[] } | { ok: false; error: string } => {
+  let metadata: { sampleNames: string[]; conditionNames: string[] } | null = null;
+  try {
+    metadata = parseCountTableHeader(inputPath);
+  } catch {
+    return { ok: false, error: 'Unable to read count table from server storage' };
+  }
+
+  if (!metadata) {
+    return {
+      ok: false,
+      error: 'Input count table header is invalid (missing separator or sample columns)',
+    };
+  }
+
+  const headerSampleNames = metadata.sampleNames;
+  if (samples.length !== headerSampleNames.length) {
+    return {
+      ok: false,
+      error: `samples length (${samples.length}) must match count table samples (${headerSampleNames.length})`,
+    };
+  }
+
+  const sampleByHeaderName = new Map<string, FrontSampleLike>();
+
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index];
+    if (!sample || typeof sample !== 'object') {
+      return { ok: false, error: `samples[${index}] must be an object` };
+    }
+
+    const updatedName = getTrimmedSampleName(sample.name);
+    const originalName = getTrimmedSampleName(sample.originalName);
+    const resolvedHeaderName = originalName || updatedName;
+
+    if (!updatedName) {
+      return { ok: false, error: `samples[${index}].name must be a non-empty string` };
+    }
+
+    if (!resolvedHeaderName) {
+      return { ok: false, error: `samples[${index}] could not be matched to count table header` };
+    }
+
+    if (sampleByHeaderName.has(resolvedHeaderName)) {
+      return { ok: false, error: `Duplicate original sample name: ${resolvedHeaderName}` };
+    }
+
+    sampleByHeaderName.set(resolvedHeaderName, sample);
+  }
+
+  const alignedSamples: FrontSampleLike[] = [];
+  for (const headerSampleName of headerSampleNames) {
+    const sample = sampleByHeaderName.get(headerSampleName);
+    if (!sample) {
+      return {
+        ok: false,
+        error: `Count table samples missing in request: ${headerSampleName}`,
+      };
+    }
+    alignedSamples.push(sample);
+  }
+
+  const unknownOriginals = Array.from(sampleByHeaderName.keys()).filter(
+    (headerName) => !headerSampleNames.includes(headerName)
+  );
+  if (unknownOriginals.length > 0) {
+    return {
+      ok: false,
+      error: `originalName values were not found in count table header: ${unknownOriginals.join(', ')}`,
+    };
+  }
+
+  return { ok: true, samples: alignedSamples, headerSampleNames };
+};
+
 /**
  * Sustituye las cabeceras de muestra del archivo original antes de ejecutar R.
  * `originalName` apunta a la cabecera actual del archivo; `name` es la cabecera final.
@@ -1506,6 +1593,11 @@ export const applySampleNameChangesToInputFile = (
   inputPath: string,
   samples: FrontSampleLike[]
 ): { ok: true; changes: SampleNameChange[] } | { ok: false; error: string } => {
+  const aligned = alignSamplesToCountTableHeader(inputPath, samples);
+  if (!aligned.ok) {
+    return aligned;
+  }
+
   let content = '';
   try {
     content = fs.readFileSync(inputPath, 'utf-8');
@@ -1524,17 +1616,11 @@ export const applySampleNameChangesToInputFile = (
   }
 
   const columns = normalizedFirstLine.split(separator).map((value) => value.trim());
-  const headerSampleNames = columns.slice(1).filter((value) => value.length > 0);
+  const headerSampleNames = aligned.headerSampleNames;
+  const orderedSamples = aligned.samples;
 
   if (columns.length < 2 || headerSampleNames.length === 0) {
     return { ok: false, error: 'Input count table header is invalid (missing sample columns)' };
-  }
-
-  if (samples.length !== headerSampleNames.length) {
-    return {
-      ok: false,
-      error: `samples length (${samples.length}) must match count table samples (${headerSampleNames.length})`,
-    };
   }
 
   const updatedNames = new Set<string>();
@@ -1542,28 +1628,17 @@ export const applySampleNameChangesToInputFile = (
   const updatedNameByOriginal = new Map<string, string>();
   const changes: SampleNameChange[] = [];
 
-  for (let index = 0; index < samples.length; index += 1) {
-    const sample = samples[index];
+  for (let index = 0; index < orderedSamples.length; index += 1) {
+    const sample = orderedSamples[index];
     if (!sample || typeof sample !== 'object') {
       return { ok: false, error: `samples[${index}] must be an object` };
     }
 
-    const updatedName = typeof sample.name === 'string' ? sample.name.trim() : '';
-    const originalName =
-      typeof sample.originalName === 'string' && sample.originalName.trim().length > 0
-        ? sample.originalName.trim()
-        : updatedName;
+    const updatedName = getTrimmedSampleName(sample.name);
+    const originalName = getTrimmedSampleName(sample.originalName) || headerSampleNames[index];
 
     if (!updatedName) {
       return { ok: false, error: `samples[${index}].name must be a non-empty string` };
-    }
-
-    if (originalName !== headerSampleNames[index]) {
-      return {
-        ok: false,
-        error:
-          `samples must follow count table header order; expected originalName "${headerSampleNames[index]}" at index ${index}`,
-      };
     }
 
     if (updatedNames.has(updatedName)) {
@@ -1580,23 +1655,6 @@ export const applySampleNameChangesToInputFile = (
     if (originalName !== updatedName) {
       changes.push({ originalName, updatedName });
     }
-  }
-
-  const headerNameSet = new Set(headerSampleNames);
-  const unknownOriginals = Array.from(originalNames).filter((name) => !headerNameSet.has(name));
-  if (unknownOriginals.length > 0) {
-    return {
-      ok: false,
-      error: `originalName values were not found in count table header: ${unknownOriginals.join(', ')}`,
-    };
-  }
-
-  const missingHeaderSamples = headerSampleNames.filter((name) => !originalNames.has(name));
-  if (missingHeaderSamples.length > 0) {
-    return {
-      ok: false,
-      error: `Count table samples missing in request: ${missingHeaderSamples.join(', ')}`,
-    };
   }
 
   if (changes.length === 0) {
