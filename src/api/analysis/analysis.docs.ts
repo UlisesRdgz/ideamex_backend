@@ -369,6 +369,7 @@
  *             vennDiagrams: []
  *             consensusGenes: []
  *             heatmaps: []
+ *             tables: []
  *           outputFiles:
  *             downloadAllUrl: /analysis/project/14/results/archive
  *             files: []

@@ -24,6 +24,7 @@ import {
 import {
   type DifferentialExpression,
   type DifferentialExpressionComparison,
+  type IntegratedResultsTable,
   type MethodStatus,
   type OutputFile,
   type Plot,
@@ -326,6 +327,9 @@ const inferComparisonPlotType = (fileName: string): PlotType => {
  */
 const inferMethodLabelFromFilePath = (fileName: string): string | undefined => {
   const normalized = fileName.toLowerCase();
+  if (normalized.startsWith('dataanalysis_results/')) {
+    return 'dataAnalysis';
+  }
   if (normalized.startsWith('edger_results/')) {
     return 'EdgeR';
   }
@@ -343,6 +347,55 @@ const inferMethodLabelFromFilePath = (fileName: string): string | undefined => {
   }
 
   return undefined;
+};
+
+const buildStructuredImageUrl = (
+  apiBaseUrl: string,
+  projectId: number,
+  resultDir: string,
+  fileName: string
+): string => {
+  return buildProjectFileInlineUrl(
+    apiBaseUrl,
+    projectId,
+    resolveApiImagePath(resultDir, fileName)
+  );
+};
+
+const getDataAnalysisPlotPriority = (fileName: string): number => {
+  const normalized = fileName.toLowerCase();
+  if (normalized.startsWith('dataanalysis_results/')) {
+    return 0;
+  }
+  return 1;
+};
+
+const inferIntegratedTableType = (fileName: string): string => {
+  const normalized = path.basename(fileName).toLowerCase();
+
+  if (normalized.includes('intersectsummary')) {
+    return 'intersectSummary';
+  }
+  if (normalized.includes('matrixweight')) {
+    return 'matrixWeight';
+  }
+  if (normalized.includes('uniontable')) {
+    return 'unionTable';
+  }
+  if (normalized.includes('intersecttable')) {
+    return 'intersectTable';
+  }
+  if (normalized.includes('union_top_ids')) {
+    return 'unionTopIds';
+  }
+  if (normalized.includes('intesrsect_top_ids')) {
+    return 'intersectTopIds';
+  }
+  if (normalized.includes('table')) {
+    return 'table';
+  }
+
+  return 'tableFile';
 };
 
 /**
@@ -2317,36 +2370,50 @@ export const buildStructuredProjectResultsPayload = (
     downloadUrl: buildProjectFileDownloadUrl(apiBaseUrl, project.id_project, file.name),
   }));
 
-  const dataAnalysisPlots: Plot[] = files
-    .map((file) => {
-      const plotType = detectStructuredPlotType(file.name);
-      if (!plotType) {
-        return null;
-      }
+  const dataAnalysisPlots: Plot[] = Array.from(
+    files
+      .map((file) => {
+        const plotType = detectStructuredPlotType(file.name);
+        if (!plotType) {
+          return null;
+        }
 
-      return {
-        id: sanitizeName(file.name) || path.basename(file.name),
-        title: path.basename(file.name),
-        type: plotType,
-        imageUrl: buildProjectFileInlineUrl(
-          apiBaseUrl,
-          project.id_project,
-          resolveApiImagePath(resultDir, file.name)
-        ),
-      } as Plot;
-    })
-    .filter((plot): plot is Plot => !!plot);
+        return {
+          fileName: file.name,
+          plot: {
+            id: sanitizeName(file.name) || path.basename(file.name),
+            title: path.basename(file.name),
+            type: plotType,
+            imageUrl: buildStructuredImageUrl(apiBaseUrl, project.id_project, resultDir, file.name),
+          } as Plot,
+        };
+      })
+      .filter(
+        (
+          plotCandidate
+        ): plotCandidate is {
+          fileName: string;
+          plot: Plot;
+        } => !!plotCandidate
+      )
+      .sort((left, right) => {
+        return getDataAnalysisPlotPriority(left.fileName) - getDataAnalysisPlotPriority(right.fileName);
+      })
+      .reduce((acc, candidate) => {
+        if (!acc.has(candidate.plot.type)) {
+          acc.set(candidate.plot.type, candidate.plot);
+        }
+        return acc;
+      }, new Map<PlotType, Plot>())
+      .values()
+  );
 
   const vennDiagrams = files
     .filter((file) => /venn/i.test(file.name) && /image|pdf/.test(file.mime_type))
     .map((file) => ({
       id: sanitizeName(file.name) || path.basename(file.name),
       title: path.basename(file.name),
-      imageUrl: buildProjectFileInlineUrl(
-        apiBaseUrl,
-        project.id_project,
-        resolveApiImagePath(resultDir, file.name)
-      ),
+      imageUrl: buildStructuredImageUrl(apiBaseUrl, project.id_project, resultDir, file.name),
     }));
 
   const heatmaps = files
@@ -2354,12 +2421,28 @@ export const buildStructuredProjectResultsPayload = (
     .map((file) => ({
       id: sanitizeName(file.name) || path.basename(file.name),
       title: path.basename(file.name),
-      imageUrl: buildProjectFileInlineUrl(
-        apiBaseUrl,
-        project.id_project,
-        resolveApiImagePath(resultDir, file.name)
-      ),
+      imageUrl: buildStructuredImageUrl(apiBaseUrl, project.id_project, resultDir, file.name),
     }));
+
+  const integratedTables: IntegratedResultsTable[] = files
+    .filter((file) => {
+      const normalized = file.name.toLowerCase();
+      return (
+        normalized.startsWith('integration_results/') &&
+        /text|csv|tab-separated-values/.test(file.mime_type)
+      );
+    })
+    .map((file) => ({
+      id: sanitizeName(file.name) || path.basename(file.name),
+      title: path.basename(file.name),
+      type: inferIntegratedTableType(file.name),
+      path: file.name,
+      mimeType: file.mime_type,
+      updatedAt: file.updated_at,
+      sizeBytes: file.size_bytes,
+      downloadUrl: buildProjectFileDownloadUrl(apiBaseUrl, project.id_project, file.name),
+    }))
+    .sort((left, right) => left.title.localeCompare(right.title));
 
   const totalResultBytes = files.reduce((acc, file) => acc + file.size_bytes, 0);
 
@@ -2391,6 +2474,7 @@ export const buildStructuredProjectResultsPayload = (
       vennDiagrams,
       consensusGenes: [],
       heatmaps,
+      tables: integratedTables,
       notes:
         project.selectedMethods && !project.selectedMethods.integrationResults
           ? 'Integration results were not selected for this run'
