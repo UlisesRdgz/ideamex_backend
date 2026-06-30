@@ -10,7 +10,9 @@ import { Request, Response } from 'express';
 import { sendErrorResponse, sendSuccessResponse } from '../../../utils/response';
 import { getProjectById, lockProjectForRun } from '../analysis.service';
 import {
+  alignSamplesToCountTableHeader,
   buildAnalysisRuntimeCommand,
+  buildBatchFromSamples,
   executeAnalysisInBackground,
   getProjectsBasePath,
   normalizeRunRequest,
@@ -69,6 +71,26 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       sendErrorResponse(res, 'Input file not found on server', null, 404);
       return;
     }
+
+    const alignedSamples = alignSamplesToCountTableHeader(
+      inputPath,
+      runProjectPayload.samples as Array<{ name?: unknown; batch?: unknown; originalName?: unknown }>
+    );
+    if (!alignedSamples.ok) {
+      sendErrorResponse(res, alignedSamples.error, null, 400);
+      return;
+    }
+
+    runProjectPayload.samples = alignedSamples.samples as typeof runProjectPayload.samples;
+
+    const normalizedBatch = buildBatchFromSamples(
+      runProjectPayload.samples as Array<{ name?: unknown; batch?: unknown; originalName?: unknown }>
+    );
+    if (normalizedBatch.error) {
+      sendErrorResponse(res, normalizedBatch.error, null, 400);
+      return;
+    }
+    runParams.batch = normalizedBatch.value;
 
     const sampleNameUpdate = applySampleNameChangesToInputFile(
       inputPath,
