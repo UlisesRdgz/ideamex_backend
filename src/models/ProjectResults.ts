@@ -87,6 +87,17 @@ export type OutputFile = {
   downloadUrl: string;
 };
 
+export type IntegratedResultsTable = {
+  id: string;
+  title: string;
+  type: string;
+  path: string;
+  mimeType: string;
+  updatedAt: string;
+  sizeBytes: number;
+  downloadUrl: string;
+};
+
 export interface ProjectResults {
   projectId: string;
   projectTitle: string;
@@ -115,6 +126,7 @@ export interface ProjectResults {
     vennDiagrams: Array<{ id: string; title: string; imageUrl: string }>;
     consensusGenes: ConsensusGene[];
     heatmaps: Array<{ id: string; title: string; imageUrl: string }>;
+    tables: IntegratedResultsTable[];
     notes?: string;
   };
 
