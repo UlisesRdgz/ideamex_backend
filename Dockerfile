@@ -3,7 +3,10 @@
 # Actualizada para usar un Docker CLI compatible con el daemon del host.
 # ---------------------------------------------------------------
 
-FROM node:18-bookworm
+# Node 20: el driver de mariadb exige >= 20.0.0 desde su actualizacion de
+# seguridad, y lru-cache pide "20 || >=22". Node 18 ademas salio de soporte en
+# abril de 2025. La exigencia maxima de todo el arbol de dependencias es 20.
+FROM node:20-bookworm
 
 RUN npm install -g npm@9 pm2@5
 
