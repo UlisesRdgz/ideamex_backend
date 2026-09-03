@@ -1,0 +1,14 @@
+{
+  /* Configuracion solo para las pruebas. El tsconfig.json de produccion
+     restringe "types" a node y express y limita rootDir a ./src, asi que no
+     sirve para compilar tests: aqui se agregan los globales de Jest y se
+     ensancha el alcance a la carpeta tests/. No emite nada; ts-jest compila en
+     memoria y el build de produccion sigue usando el tsconfig.json base. */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "types": ["node", "express", "jest"],
+    "noEmit": true
+  },
+  "include": ["src/**/*", "tests/**/*"]
+}
