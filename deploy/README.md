@@ -79,3 +79,43 @@ sobre `ideamex-r`, que es como el backend lanza el pipeline de R.
 La version vieja quedo un tiempo como `Dockerfile.bak` en el servidor, sin
 versionar y a medio agregar al indice de git. Se elimino en septiembre de 2026,
 una vez que el Dockerfile vigente quedo versionado en este repositorio.
+
+## Dependencia externa: el pipeline de R
+
+El analisis estadistico no vive en este repositorio. Lo ejecuta **IDEAMEX-CLI**,
+desarrollado por la **Dra. Leticia Vega Alvarado**, que el backend invoca con
+`docker exec` sobre el contenedor `ideamex-r`.
+
+| | |
+| --- | --- |
+| Repositorio | `https://github.com/leticiaVega/ideamexCLI.git` (**privado**) |
+| Commit desplegado | `244c981` — "Create arab.txt", 12-nov-2025 |
+| Rama | `main` |
+| Licencia | CC BY-NC 4.0 |
+| Ubicacion en el servidor | `ideamex_backend/R/ideamexCLI/` |
+| Ruta dentro del contenedor | `/app/ideamexCLI/src/RunMainIDEAMEX.r` |
+
+`R/Dockerfile` (la receta del contenedor de R, de Carlos Perez Calderon) si esta
+versionado aqui. El contenido de `R/ideamexCLI/` no: se excluye en `.gitignore`.
+
+### Por que no es un submodulo
+
+Seria lo natural —un apuntador a URL + commit exacto, sin copiar codigo ajeno—
+pero **el repositorio es privado y no es accesible**, ni siquiera con la cuenta
+del autor de este backend. Un submodulo que apunta a una URL inalcanzable rompe
+el `git clone --recurse-submodules` de cualquiera, asi que por ahora la
+dependencia solo queda documentada aqui.
+
+Para convertirlo en submodulo mas adelante basta con obtener acceso de lectura y:
+
+```bash
+git submodule add https://github.com/leticiaVega/ideamexCLI.git R/ideamexCLI
+cd R/ideamexCLI && git checkout 244c981 && cd -
+git add .gitmodules R/ideamexCLI && git commit
+```
+
+### Riesgo abierto
+
+Hoy la unica copia alcanzable del pipeline es el clon en el servidor. Si ese
+disco se pierde, tampoco queda registro reproducible de que version del analisis
+produjo los resultados de la tesis.
