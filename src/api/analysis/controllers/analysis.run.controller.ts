@@ -25,9 +25,8 @@ import {
 
 /**
  * Controlador para iniciar la corrida de análisis de un proyecto.
- * Los cuatro pasos de validación van numerados abajo y su orden no es
- * intercambiable: cada uno depende del resultado del anterior.
- * Responde 202 porque la corrida continúa en segundo plano.
+ * Los cuatro pasos numerados abajo no son intercambiables: cada uno depende del
+ * anterior. Responde 202 porque la corrida sigue en segundo plano.
  */
 export const handleRunProjectAnalysis = async (req: Request, res: Response): Promise<void> => {
   try {

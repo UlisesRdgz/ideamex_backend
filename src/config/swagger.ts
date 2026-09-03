@@ -14,9 +14,8 @@ import { appConfig } from './appConfig';
 
 /**
  * Configuración para generar la documentación de Swagger.
- * Solo lo transversal: datos de la API, servidores, autenticación y los
- * componentes que las rutas referencian con `$ref`. La documentación de cada
- * endpoint vive en los `.docs.ts` de su módulo.
+ * Solo lo transversal: datos de la API, servidores, autenticación y componentes
+ * `$ref`. La documentación de cada endpoint vive en los `.docs.ts`.
  *
  * @constant {Options} swaggerOptions
  */
@@ -34,9 +33,8 @@ const swaggerOptions: Options = {
       },
     },
     // Se declaran ambos porque la ruta pública no coincide con la interna: nginx
-    // atiende en /ideamex2/api/ y elimina ese prefijo antes de pasar la petición
-    // a Express, que solo ve "/". Sin la entrada pública, el botón de probar de
-    // Swagger apuntaría a una URL inexistente desde fuera del servidor.
+    // atiende en /ideamex2/api/ y quita ese prefijo, así que Express solo ve "/".
+    // Sin la pública, el botón de probar apuntaría a una URL inexistente.
     servers: [
       {
         url: `http://127.0.0.1:${appConfig.port}${appConfig.basePath}`,
@@ -196,11 +194,9 @@ const swaggerOptions: Options = {
       },
     },
   },
-  // Incluye anotaciones de Swagger de todos los módulos.
-  // La ruta es relativa al directorio de trabajo del proceso, no a este archivo,
-  // y apunta al código fuente: los `.docs.ts` llevan las anotaciones en
-  // comentarios, que desaparecen al compilar a `dist/`. Por eso el contenedor de
-  // producción también copia `src/`, aunque ejecute el compilado.
+  // Incluye anotaciones de Swagger de todos los módulos. La ruta es relativa al
+  // directorio del proceso y apunta al fuente: las anotaciones viven en
+  // comentarios y se pierden al compilar, por eso la imagen también copia `src/`.
   apis: ['./src/api/**/*.docs.ts'],
 };
 

@@ -8,9 +8,8 @@
 
 /**
  * Estado de la corrida tal como lo consume el frontend.
- * Ojo: no es `ProjectStatus` de `models/Project`, que va en mayúsculas y es el
- * que guarda la base. Este es su equivalente en minúsculas, con `PROCESSING`
- * mapeado a `running`. Convierte `mapProjectStatusToRunStatus`.
+ * Ojo: no es `ProjectStatus` de `models/Project`, que va en mayúsculas y guarda
+ * la base. Convierte `mapProjectStatusToRunStatus`; `PROCESSING` es `running`.
  */
 export type ProjectRunStatus = 'pending' | 'running' | 'completed' | 'failed';
 
@@ -29,9 +28,8 @@ export type DifferentialMethod = 'EdgeR' | 'DESeq2' | 'Limma' | 'NOISeq';
 
 /**
  * Tipo de gráfica, deducido del nombre del archivo que genera R.
- * Conviven dos convenciones del pipeline: nombres cortos en el análisis
- * exploratorio (`mds`) y con prefijo `plot` en las comparaciones (`plotMDS`).
- * La cadena vacía es el valor de reserva: el archivo se expone sin clasificar.
+ * Conviven dos convenciones: nombres cortos en el análisis exploratorio (`mds`)
+ * y con prefijo en las comparaciones (`plotMDS`). La vacía no clasifica.
  */
 export type PlotType =
   | 'boxplot'
@@ -89,8 +87,7 @@ export type Plot = {
 /**
  * Resultado de un contraste concreto dentro de un método.
  * `significant` no es la suma de los otros dos: cuenta los genes que pasan el
- * p-valor ajustado, incluidos los que no alcanzan el umbral de log fold-change
- * y por tanto no se clasifican en ninguna dirección.
+ * p-valor ajustado, aunque no alcancen el umbral de log fold-change.
  */
 export type DifferentialExpressionComparison = {
   name: string;
@@ -141,9 +138,8 @@ export type IntegratedResultsTable = {
 
 /**
  * Respuesta completa del endpoint de resultados.
- * Su estructura refleja las secciones de la interfaz, no la del pipeline: cada
- * bloque corresponde a una pestaña del frontend.
- * Las rutas son siempre URLs de descarga del backend, nunca rutas del disco.
+ * Su estructura refleja las secciones de la interfaz, no la del pipeline. Las
+ * rutas son siempre URLs de descarga del backend, nunca rutas del disco.
  */
 export interface ProjectResults {
   projectId: string;
