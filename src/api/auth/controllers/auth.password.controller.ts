@@ -2,6 +2,8 @@
  * @file Controlador de recuperación y restablecimiento de contraseña.
  *
  * @module api/auth/controllers/auth.password.controller
+ *
+ * @author Ulises Rodríguez García
  */
 
 import { Request, Response } from 'express';

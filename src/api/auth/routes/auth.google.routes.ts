@@ -2,6 +2,8 @@
  * @file Rutas de autenticación con Google.
  *
  * @module api/auth/routes/auth.google.routes
+ *
+ * @author Ulises Rodríguez García
  */
 
 import { Router } from 'express';

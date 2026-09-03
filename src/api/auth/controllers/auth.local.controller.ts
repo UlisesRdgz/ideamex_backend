@@ -2,6 +2,8 @@
  * @file Controlador de autenticación local.
  *
  * @module api/auth/controllers/auth.local.controller
+ *
+ * @author Ulises Rodríguez García
  */
 
 import { Request, Response } from 'express';

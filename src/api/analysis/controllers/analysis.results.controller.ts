@@ -2,6 +2,8 @@
  * @file Controladores de consulta y descarga de resultados.
  *
  * @module api/analysis/controllers/analysis.results.controller
+ *
+ * @author Ulises Rodríguez García
  */
 
 import fs from 'fs';
@@ -23,6 +25,17 @@ import {
 
 /**
  * Devuelve resultados estructurados de un proyecto finalizado.
+ *
+ * Es el endpoint que alimenta la vista de resultados: en vez de entregar la
+ * lista de archivos que dejó R, recorre el directorio de salida, interpreta los
+ * nombres para clasificar cada gráfica y tabla, lee los conteos de genes
+ * diferenciales y arma la respuesta ya organizada por secciones. Así el frontend
+ * no necesita conocer las convenciones de nombres del pipeline.
+ *
+ * Los cuatro controladores de este módulo comparten el mismo preámbulo —usuario
+ * del token, identificador válido, proyecto propio y en estado `COMPLETED`, y
+ * directorio de resultados resuelto dentro de la carpeta de proyectos— porque
+ * cada uno expone archivos del servidor y ninguno debe poder omitir un paso.
  */
 export const handleGetProjectResultsStructured = async (
   req: Request,
@@ -48,6 +61,9 @@ export const handleGetProjectResultsStructured = async (
       return;
     }
 
+    // Se exige `COMPLETED` y no basta con que existan archivos: una corrida en
+    // curso deja resultados parciales en el disco, y exponerlos daría cifras
+    // incompletas con apariencia de definitivas.
     if (project.status !== 'COMPLETED') {
       sendErrorResponse(
         res,
@@ -59,6 +75,8 @@ export const handleGetProjectResultsStructured = async (
     }
 
     const basePath = getProjectsBasePath();
+    // La ruta viene de la base, pero se vuelve a resolver contra la carpeta de
+    // proyectos: si el valor almacenado intentara escapar de ella, se descarta.
     const resultDir = resolveResultDirectory(basePath, project);
     if (!resultDir) {
       sendErrorResponse(res, 'Project result path is invalid', null, 500);
@@ -197,6 +215,10 @@ export const handleDownloadProjectResultsArchive = async (
       return;
     }
 
+    // El nombre que verá el usuario al descargar se sanitiza porque viaja en una
+    // cabecera HTTP: un título con comillas o saltos de línea podría alterar la
+    // respuesta. El respaldo por identificador cubre el caso de un título que al
+    // sanitizarse queda vacío, por ejemplo si solo tenía emojis.
     const safeTitle = sanitizeName(project.title) || `project-${project.id_project}`;
     const downloadFileName = `${safeTitle}_results.${archive.extension}`;
     res.setHeader('Content-Disposition', `attachment; filename=\"${downloadFileName}\"`);
@@ -218,6 +240,16 @@ export const handleDownloadProjectResultsArchive = async (
 
 /**
  * Sirve un archivo individual de resultados para visualización o descarga.
+ *
+ * Es el endpoint más delicado del módulo: recibe un nombre de archivo desde la
+ * petición y responde con contenido del disco del servidor. Tres controles lo
+ * acotan: el proyecto debe pertenecer a quien pide, el nombre se resuelve dentro
+ * del directorio de resultados —descartando cualquier intento de salir de él— y
+ * la extensión debe estar en la lista blanca, de modo que no se puedan servir
+ * archivos ajenos a los que produce el pipeline.
+ *
+ * El parámetro `download` solo decide la cabecera `Content-Disposition`: en
+ * línea para que el navegador muestre una gráfica, o adjunto para descargarla.
  */
 export const handleGetProjectResultFile = async (req: Request, res: Response): Promise<void> => {
   try {

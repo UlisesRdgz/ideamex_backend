@@ -6,6 +6,8 @@
  * tags:
  *   - name: Auth
  *     description: Registro, activación y autenticación de usuarios.
+ *
+ * @author Ulises Rodríguez García
  */
 
 /**

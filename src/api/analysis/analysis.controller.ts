@@ -3,6 +3,8 @@
  * Permite mantener imports existentes mientras la implementación se divide por flujo.
  *
  * @module api/analysis/analysis.controller
+ *
+ * @author Ulises Rodríguez García
  */
 
 export {
