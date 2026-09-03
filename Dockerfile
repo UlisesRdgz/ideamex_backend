@@ -33,6 +33,12 @@ COPY . .
 RUN npm run build
 RUN npm prune --production
 
+# El NODE_ENV=development de arriba solo sirve para que `npm install` traiga las
+# devDependencies que necesita `npm run build`. A partir de aqui la imagen es de
+# produccion: dotenv no sobrescribe variables ya definidas, asi que sin esta linea
+# el contenedor arranca en modo development.
+ENV NODE_ENV=production
+
 EXPOSE 5000
 USER node
 CMD ["pm2-runtime", "dist/index.js"]
