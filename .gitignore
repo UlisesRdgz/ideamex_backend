@@ -162,8 +162,7 @@ Temporary Items
 .apdisk
 
 # Project
-# R/ se versiona: contiene el Dockerfile del motor de R. Lo que queda fuera es
-# ideamexCLI, el pipeline de la Dra. Leticia Vega. Ver deploy/README.md.
-R/ideamexCLI/
+# R/ se versiona completo, incluida la copia integrada de ideamexCLI (codigo de
+# la Dra. Leticia Vega, CC BY-NC 4.0). Ver R/README.md.
 projects/
 docker-compose.r.yml
