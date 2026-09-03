@@ -162,7 +162,6 @@ Temporary Items
 .apdisk
 
 # Project
-Dockerfile
 R/
 projects/
 docker-compose.r.yml
