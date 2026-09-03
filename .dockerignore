@@ -16,6 +16,11 @@ projects
 *.bak
 .DS_Store
 
+# Pruebas: el build de la imagen solo compila src/.
+tests
+jest.config.js
+tsconfig.test.json
+
 # Documentacion e infraestructura: no hacen falta en tiempo de ejecucion.
 deploy
 README.md
