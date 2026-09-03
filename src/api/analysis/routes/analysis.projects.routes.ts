@@ -2,6 +2,8 @@
  * @file Rutas de ciclo de vida de proyectos de análisis.
  *
  * @module api/analysis/routes/analysis.projects.routes
+ *
+ * @author Ulises Rodríguez García
  */
 
 import { Router } from 'express';

@@ -2,6 +2,8 @@
  * @file Controladores de ciclo de vida de proyecto de análisis.
  *
  * @module api/analysis/controllers/analysis.projects.controller
+ *
+ * @author Ulises Rodríguez García
  */
 
 import fs from 'fs';
@@ -28,6 +30,18 @@ import {
 
 /**
  * Controlador para manejar la carga de un nuevo proyecto.
+ *
+ * Conviene tener presente que para cuando este controlador se ejecuta, multer ya
+ * escribió el archivo en disco: el middleware corre antes y decide la ruta a
+ * partir del token y del título. De ahí que cada rama de error tenga que
+ * limpiar lo que quedó escrito, o el servidor iría acumulando archivos
+ * huérfanos de proyectos que nunca se crearon.
+ *
+ * El duplicado de título se revisa dos veces, y no es redundancia: la primera
+ * consulta da un 409 claro sin depender del error del motor, pero entre esa
+ * consulta y el `INSERT` cabe otra petición del mismo usuario. La restricción
+ * única de la tabla cierra esa ventana, y el bloque `catch` traduce su error al
+ * mismo 409.
  */
 export const handleProjectUpload = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -61,12 +75,17 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
       try {
         if (file.path && fs.existsSync(file.path)) {
           fs.rmSync(file.path, { force: true });
+          // También se retira la carpeta que multer creó para este proyecto, pero
+          // solo si quedó vacía: si contiene algo más, pertenece a un proyecto
+          // anterior con el mismo título sanitizado y borrarla destruiría sus datos.
           const parentFolder = path.dirname(file.path);
           if (fs.existsSync(parentFolder) && fs.readdirSync(parentFolder).length === 0) {
             fs.rmdirSync(parentFolder);
           }
         }
       } catch (cleanupError) {
+        // La limpieza es de mejor esfuerzo: si falla se deja constancia en el log,
+        // pero el usuario debe recibir igual su 409 por título duplicado.
         console.error('[FS] Error cleaning duplicate upload:', cleanupError);
       }
 
@@ -74,12 +93,20 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
       return;
     }
 
+    // La ruta se reconstruye con las mismas funciones de sanitización que usó
+    // multer al guardar el archivo. Reproducirlas en vez de leer `file.path`
+    // asegura que lo almacenado en la base sea una ruta relativa a la carpeta de
+    // proyectos, y no la absoluta del servidor, que cambiaría en otro despliegue.
     const emailPrefix = sanitizeEmailPrefix(user.email);
     const projectFolder = sanitizeName(title);
     const relativePath = path.posix.join(emailPrefix, projectFolder, file.filename);
     const createPayload: ProjectJsonPayload = {
       imageUrl: extractUploadImageUrl(payload),
     };
+    // El estado se filtra contra una lista blanca en lugar de aceptar lo que
+    // llegue: es un campo que el cliente puede mandar, y sin este filtro bastaría
+    // enviar `COMPLETED` para crear un proyecto que aparenta tener resultados.
+    // Cualquier valor no reconocido cae a `PENDING`.
     const inputStatus = typeof payload.status === 'string' ? payload.status.trim().toUpperCase() : '';
     const statusMap: Record<string, 'PENDING' | 'PROCESSING' | 'FAILED' | 'COMPLETED'> = {
       PENDING: 'PENDING',
@@ -145,6 +172,9 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
 
 /**
  * Controlador para obtener todos los proyectos de un usuario autenticado.
+ * El filtrado por usuario ocurre en la consulta, no aquí: el identificador sale
+ * del token verificado y nunca de un parámetro de la petición, de modo que no
+ * hay forma de pedir los proyectos de otra persona.
  */
 export const handleGetUserProjects = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -166,6 +196,16 @@ export const handleGetUserProjects = async (req: Request, res: Response): Promis
 
 /**
  * Controlador para eliminar un proyecto del usuario autenticado.
+ *
+ * Borra el registro y también la carpeta del proyecto en disco. Como la
+ * convención de rutas cambió a lo largo del desarrollo, se resuelve una lista de
+ * ubicaciones candidatas en lugar de una sola, para que los proyectos antiguos
+ * no dejen archivos atrás.
+ *
+ * Un proyecto en `PROCESSING` está protegido: borrar su carpeta mientras R
+ * escribe en ella dejaría el proceso trabajando sobre rutas inexistentes. El
+ * parámetro `force` permite saltarse esa protección, pensado para corridas que
+ * se quedaron colgadas y nunca cambiarán de estado.
  */
 export const handleDeleteProject = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -225,6 +265,9 @@ export const handleDeleteProject = async (req: Request, res: Response): Promise<
         }
       }
 
+      // Si era el último proyecto del usuario, su carpeta raíz queda vacía y se
+      // retira. La comprobación de que está vacía es lo que impide borrar los
+      // demás proyectos de esa persona.
       const userRoot = resolveProjectAbsolutePath(
         basePath,
         sanitizeEmailPrefix(typeof user.email === 'string' ? user.email : '')

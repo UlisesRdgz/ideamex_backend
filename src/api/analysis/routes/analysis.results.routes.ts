@@ -2,6 +2,8 @@
  * @file Rutas de resultados de análisis.
  *
  * @module api/analysis/routes/analysis.results.routes
+ *
+ * @author Ulises Rodríguez García
  */
 
 import { Router } from 'express';

@@ -2,6 +2,8 @@
  * @file Controlador de autenticación con Google.
  *
  * @module api/auth/controllers/auth.google.controller
+ *
+ * @author Ulises Rodríguez García
  */
 
 import { Request, Response } from 'express';

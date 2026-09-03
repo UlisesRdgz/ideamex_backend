@@ -2,6 +2,8 @@
  * @file Helpers compartidos del módulo de análisis.
  *
  * @module api/analysis/controllers/analysis.shared.controller
+ *
+ * @author Ulises Rodríguez García
  */
 
 import fs from 'fs';

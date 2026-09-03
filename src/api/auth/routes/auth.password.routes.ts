@@ -2,6 +2,8 @@
  * @file Rutas de recuperación de contraseña.
  *
  * @module api/auth/routes/auth.password.routes
+ *
+ * @author Ulises Rodríguez García
  */
 
 import { Router } from 'express';

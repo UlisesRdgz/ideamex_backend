@@ -6,6 +6,8 @@
  * tags:
  *   - name: Contact
  *     description: Recepción de solicitudes de contacto del sitio público.
+ *
+ * @author Ulises Rodríguez García
  */
 
 /**

@@ -2,6 +2,8 @@
  * @file Rutas de autenticación local.
  *
  * @module api/auth/routes/auth.local.routes
+ *
+ * @author Ulises Rodríguez García
  */
 
 import { Router } from 'express';

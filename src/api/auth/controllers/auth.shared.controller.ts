@@ -2,6 +2,8 @@
  * @file Helpers compartidos del módulo de autenticación.
  *
  * @module api/auth/controllers/auth.shared.controller
+ *
+ * @author Ulises Rodríguez García
  */
 
 import jwt from 'jsonwebtoken';

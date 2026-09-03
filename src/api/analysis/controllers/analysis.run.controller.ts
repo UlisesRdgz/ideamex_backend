@@ -2,6 +2,8 @@
  * @file Controlador de ejecución de corridas de análisis.
  *
  * @module api/analysis/controllers/analysis.run.controller
+ *
+ * @author Ulises Rodríguez García
  */
 
 import fs from 'fs';
@@ -23,7 +25,21 @@ import {
 
 /**
  * Controlador para iniciar la corrida de análisis de un proyecto.
- * Una vez iniciada, el proyecto queda bloqueado y no puede modificarse.
+ *
+ * Encadena una secuencia de validaciones cuyo orden importa: cada paso depende
+ * del anterior. Primero se alinean los nombres de muestra contra el encabezado
+ * real del archivo de conteos, porque el lote y las comparaciones se calculan a
+ * partir de esos nombres; luego se deriva el parámetro de lote; después se
+ * escriben los nombres nuevos en el archivo; y solo entonces se revalida el
+ * resultado en disco.
+ *
+ * El bloqueo del proyecto se toma al final, ya con todo verificado y el comando
+ * de R armado. Hacerlo antes dejaría el proyecto en `PROCESSING` tras un fallo
+ * de validación, sin corrida en curso y sin posibilidad de reintentar, ya que la
+ * transición de estado no admite volver a `PENDING`.
+ *
+ * La respuesta es 202: la corrida sigue en segundo plano y el cliente consulta
+ * su avance por el endpoint de resultados.
  */
 export const handleRunProjectAnalysis = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -47,6 +63,9 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
+    // Solo se corre una vez: `PROCESSING` indica una corrida en curso, y
+    // `COMPLETED` o `FAILED` que ya terminó. Relanzar sobreescribiría los
+    // resultados en disco, así que se exige crear un proyecto nuevo.
     if (project.status !== 'PENDING') {
       sendErrorResponse(res, 'This project is not pending and cannot be executed again', null, 409);
       return;
@@ -72,6 +91,9 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
+    // Paso 1. El usuario pudo renombrar muestras en la interfaz, y el archivo
+    // subido conserva el encabezado original. Se emparejan ambos para saber qué
+    // columna corresponde a cada muestra antes de tocar nada más.
     const alignedSamples = alignSamplesToCountTableHeader(
       inputPath,
       runProjectPayload.samples as Array<{ name?: unknown; batch?: unknown; originalName?: unknown }>
@@ -83,6 +105,9 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
 
     runProjectPayload.samples = alignedSamples.samples as typeof runProjectPayload.samples;
 
+    // Paso 2. El lote se deriva de los nombres ya alineados, no de lo que mandó
+    // el cliente: aquí se rechazan los diseños que R no puede corregir, como el
+    // lote confundido con la condición experimental.
     const normalizedBatch = buildBatchFromSamples(
       runProjectPayload.samples as Array<{ name?: unknown; batch?: unknown; originalName?: unknown }>
     );
@@ -92,6 +117,9 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
     }
     runParams.batch = normalizedBatch.value;
 
+    // Paso 3. Se reescribe el encabezado del archivo de conteos con los nombres
+    // definitivos, porque el script de R lee los grupos experimentales de ahí y
+    // no recibe la lista de muestras por parámetro.
     const sampleNameUpdate = applySampleNameChangesToInputFile(
       inputPath,
       runProjectPayload.samples as Array<{ name?: unknown; batch?: unknown; originalName?: unknown }>
@@ -101,12 +129,17 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
+    // Paso 4. Se revalida contra el archivo ya modificado, no contra el payload:
+    // es la última oportunidad de detectar una inconsistencia antes de lanzar un
+    // proceso que puede tardar minutos.
     const sampleValidation = validateSampleNamesAndBatch(inputPath, runParams);
     if (!sampleValidation.ok) {
       sendErrorResponse(res, sampleValidation.error, null, 400);
       return;
     }
 
+    // El pipeline escribe sus resultados junto al archivo de entrada, así que la
+    // carpeta del proyecto es a la vez origen y destino.
     const outputDir = path.dirname(inputPath);
 
     const runtimeBuild = buildAnalysisRuntimeCommand({
@@ -124,6 +157,10 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
+    // Bloqueo al final, con todo ya verificado. La operación es condicional en
+    // la base (solo cambia el estado si sigue en `PENDING`), de modo que si dos
+    // peticiones simultáneas llegan hasta aquí, únicamente una obtiene el
+    // bloqueo y la otra recibe 409.
     const locked = await lockProjectForRun(projectId, user.id_user, runProjectPayload);
 
     if (!locked) {
@@ -131,6 +168,9 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
+    // No se espera: el pipeline de R puede tardar minutos y mantener la petición
+    // abierta agotaría el tiempo de espera del proxy. El avance se consulta
+    // después por el endpoint de resultados.
     executeAnalysisInBackground({
       projectId,
       userId: user.id_user,

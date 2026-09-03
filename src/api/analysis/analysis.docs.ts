@@ -6,6 +6,8 @@
  * tags:
  *   - name: Analysis
  *     description: Carga de proyectos, ejecución de análisis y consulta de resultados.
+ *
+ * @author Ulises Rodríguez García
  */
 
 /**
