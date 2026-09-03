@@ -30,10 +30,8 @@ import {
 
 /**
  * Controlador para manejar la carga de un nuevo proyecto.
- * Cuando esto se ejecuta, multer ya escribió el archivo en disco: por eso cada
- * rama de error tiene que limpiarlo, o quedarían archivos huérfanos.
- * El título duplicado se revisa dos veces: la consulta previa da un 409 claro, y
- * la restricción única cierra la ventana hasta el `INSERT`.
+ * Multer ya escribió el archivo cuando esto corre: cada rama de error lo limpia.
+ * El título duplicado se revisa dos veces por la ventana hasta el `INSERT`.
  */
 export const handleProjectUpload = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -85,20 +83,18 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
       return;
     }
 
-    // La ruta se reconstruye con las mismas funciones de sanitización que usó
-    // multer al guardar el archivo. Reproducirlas en vez de leer `file.path`
-    // asegura que lo almacenado en la base sea una ruta relativa a la carpeta de
-    // proyectos, y no la absoluta del servidor, que cambiaría en otro despliegue.
+    // Se reconstruye con las mismas funciones que usó multer, en vez de leer
+    // `file.path`, para guardar en la base una ruta relativa a la carpeta de
+    // proyectos y no la absoluta del servidor.
     const emailPrefix = sanitizeEmailPrefix(user.email);
     const projectFolder = sanitizeName(title);
     const relativePath = path.posix.join(emailPrefix, projectFolder, file.filename);
     const createPayload: ProjectJsonPayload = {
       imageUrl: extractUploadImageUrl(payload),
     };
-    // El estado se filtra contra una lista blanca en lugar de aceptar lo que
-    // llegue: es un campo que el cliente puede mandar, y sin este filtro bastaría
-    // enviar `COMPLETED` para crear un proyecto que aparenta tener resultados.
-    // Cualquier valor no reconocido cae a `PENDING`.
+    // Lista blanca: es un campo que manda el cliente, y sin filtro bastaría
+    // enviar `COMPLETED` para simular un proyecto con resultados. Lo no
+    // reconocido cae a `PENDING`.
     const inputStatus = typeof payload.status === 'string' ? payload.status.trim().toUpperCase() : '';
     const statusMap: Record<string, 'PENDING' | 'PROCESSING' | 'FAILED' | 'COMPLETED'> = {
       PENDING: 'PENDING',
@@ -164,9 +160,8 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
 
 /**
  * Controlador para obtener todos los proyectos de un usuario autenticado.
- * El filtrado por usuario ocurre en la consulta, no aquí: el identificador sale
- * del token verificado y nunca de un parámetro de la petición, de modo que no
- * hay forma de pedir los proyectos de otra persona.
+ * El filtrado ocurre en la consulta con el identificador del token verificado,
+ * nunca con un parámetro de la petición.
  */
 export const handleGetUserProjects = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -188,10 +183,8 @@ export const handleGetUserProjects = async (req: Request, res: Response): Promis
 
 /**
  * Controlador para eliminar un proyecto del usuario autenticado.
- * Borra el registro y su carpeta. La convención de rutas cambió durante el
- * desarrollo, así que se resuelven varias ubicaciones candidatas.
- * Un proyecto en `PROCESSING` está protegido, porque R sigue escribiendo en esa
- * carpeta; `force` salta esa protección para corridas colgadas.
+ * Se resuelven varias rutas candidatas porque la convención cambió durante el
+ * desarrollo. `PROCESSING` está protegido —R escribe ahí— y `force` lo salta.
  */
 export const handleDeleteProject = async (req: Request, res: Response): Promise<void> => {
   try {

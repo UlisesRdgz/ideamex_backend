@@ -65,8 +65,7 @@ const docsPath = `${appConfig.basePath}docs`;
 
 // Canonicaliza /docs -> /docs/ con redirección relativa, sin romper prefijos en reverse proxy.
 // Swagger UI resuelve sus recursos con rutas relativas y necesita la barra final.
-// Se redirige a "docs/" y no a "/docs/" porque Express solo ve "/": nginx ya
-// quitó el prefijo, y una ruta absoluta sacaría al usuario de la aplicación.
+// Se redirige a "docs/" y no a "/docs/" porque nginx ya quitó el prefijo.
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.path === docsPath && !req.originalUrl.endsWith('/')) {
     res.redirect(301, 'docs/');
@@ -82,10 +81,9 @@ app.use(
   swaggerUi.setup(swaggerSpec)
 );
 
-// Rate limit para evitar spam en el formulario de contacto.
-// Es el único endpoint sin autenticación que provoca un efecto externo —envía
-// correo—, de modo que sin límite sería utilizable para inundar el buzón del
-// proyecto. Dos envíos cada quince minutos por IP bastan para el uso legítimo.
+// Rate limit para evitar spam en el formulario de contacto. Es el único endpoint
+// sin autenticación con efecto externo —envía correo—, así que sin límite
+// serviría para inundar el buzón del proyecto.
 const contactLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 2,
@@ -113,9 +111,8 @@ app.get(appConfig.basePath, (req: Request, res: Response) => {
 });
 
 // Manejador global de errores. Va al final y con los cuatro parámetros: Express
-// lo identifica por su aridad, y sin `next` lo trataría como middleware normal.
-// Traduce los errores que ocurren antes de los controladores —parseo del body,
-// validaciones de multer— a la misma forma de respuesta que el resto de la API.
+// lo identifica por su aridad. Traduce los errores previos a los controladores
+// —parseo del body, multer— a la forma de respuesta del resto de la API.
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('[ERROR] Unhandled:', err);
 
@@ -169,10 +166,8 @@ const startServer = (): void => {
 
 /**
  * Arranque de la aplicación.
- * Verifica configuración, base de datos y correo antes de abrir el puerto, y
- * termina el proceso si algo falla. Es deliberado que no arranque a medias:
- * escuchar peticiones sin base daría errores intermitentes difíciles de
- * diagnosticar, mientras que un `exit(1)` deja el fallo visible en el log.
+ * Verifica configuración, base y correo antes de abrir el puerto, y termina el
+ * proceso si algo falla: arrancar a medias daría errores intermitentes.
  */
 const bootstrap = async (): Promise<void> => {
   try {

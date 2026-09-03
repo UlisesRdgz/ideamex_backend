@@ -9,9 +9,8 @@
 
 /**
  * Estado de un proyecto dentro del ciclo de análisis.
- * Avanza en un solo sentido: `PENDING` al subir el archivo, `PROCESSING` al
- * lanzar la corrida de R, y de ahí a `COMPLETED` o `FAILED`. No se vuelve a
- * `PENDING`; relanzar un análisis exige crear otro proyecto.
+ * Avanza en un solo sentido: `PENDING`, `PROCESSING`, y de ahí a `COMPLETED` o
+ * `FAILED`. No vuelve a `PENDING`; relanzar exige crear otro proyecto.
  */
 export type ProjectStatus = 'PENDING' | 'PROCESSING' | 'FAILED' | 'COMPLETED';
 
@@ -27,9 +26,8 @@ export type NullableDateValue = Date | string | null | undefined;
 export interface Sample {
   /**
    * Nombre con formato `grupo_replica` (por ejemplo `control_1`). El prefijo
-   * anterior al último guion bajo identifica la condición experimental, y de ahí
-   * se deduce a qué grupo pertenece la muestra al construir la corrección por
-   * lotes.
+   * anterior al último guion bajo identifica la condición experimental, de la
+   * que se deduce el grupo al construir la corrección por lotes.
    */
   name: string;
 
@@ -50,9 +48,8 @@ export interface Sample {
 
 /**
  * Métodos de expresión diferencial elegidos por el usuario.
- * El backend los traduce a una cadena compacta de dígitos para el argumento
- * `-m` del script de R, en este mismo orden: edgeR 1, limma 2, NOISeq 3,
- * DESeq2 4, análisis de datos 5, integración de resultados 6.
+ * Se traducen a la cadena compacta del argumento `-m` de R, en este orden:
+ * edgeR 1, limma 2, NOISeq 3, DESeq2 4, análisis 5, integración 6.
  */
 export interface MethodsSelection {
   edgeR: boolean;
@@ -83,10 +80,8 @@ export interface ProjectComparison {
 
 /**
  * Umbrales estadísticos de la corrida.
- *
- * Los tres primeros son cadenas y no números a propósito: viajan literalmente a
- * los argumentos de línea de comandos del script de R, y convertirlos a `number`
- * arriesgaría cambios de representación (por ejemplo `0.05` a `5e-2`).
+ * Los tres primeros son cadena y no número a propósito: viajan literalmente a
+ * los argumentos de R, y convertirlos arriesgaría cambios de representación.
  */
 export interface AnalysisParameters {
   /** Tasa de falsos descubrimientos (p-valor ajustado) para considerar significativo un gen. */
@@ -130,11 +125,8 @@ export interface Project {
 
 /**
  * Fila cruda de la tabla `projects` en MariaDB.
- *
- * Las columnas terminadas en `_json` guardan la configuración del análisis como
- * texto serializado, no como estructuras: la base no valida su contenido, así
- * que `ProjectMapper` las deserializa y verifica antes de que el resto del
- * backend las use.
+ * Las columnas `_json` guardan la configuración como texto y la base no valida
+ * su contenido: `ProjectMapper` las deserializa y verifica antes de usarlas.
  */
 export interface ProjectRow {
   id_project: number;
@@ -170,10 +162,8 @@ export interface ProjectRecordParams {
 
 /**
  * Entidad interna usada por el backend para operar un proyecto ya normalizado.
- * Conserva los nombres de columna de la base para que el mapeo desde la fila sea
- * directo; la traducción al contrato público vive solo en `toProject`.
- * Solo se construye desde `mapProjectRowToRecord`: instanciarla a mano saltaría
- * la validación.
+ * Conserva los nombres de columna de la base; la traducción al contrato público
+ * vive solo en `toProject`. Se construye desde `mapProjectRowToRecord`.
  */
 export class ProjectRecord {
   id_project: number;

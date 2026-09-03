@@ -166,12 +166,8 @@ export const validateContactForm = [
 
 /**
  * Reglas de validación para ejecutar el análisis de un proyecto.
- * Es el conjunto más extenso porque el body trae la configuración completa del
- * experimento, anidada y con dependencias entre campos. Un valor mal formado no
- * revienta: produce resultados incorrectos.
- * Acepta `methods` (cadena compacta, formato anterior) o `selectedMethods`
- * (banderas del frontend actual). La coherencia con el archivo de conteos se
- * revisa después, en el controlador de la corrida.
+ * El conjunto más extenso, porque el body trae la configuración completa del
+ * experimento. Acepta `methods` (formato anterior) o `selectedMethods`.
  */
 export const validateRunAnalysis = [
   param('projectId')
@@ -226,10 +222,9 @@ export const validateRunAnalysis = [
           throw new Error('methods debe incluir al menos un método entre 1 y 5');
         }
 
-        // El dígito 6 es la integración de resultados, que compara entre sí las
-        // salidas de los métodos de expresión diferencial (1 a 4). Pedirla sola
-        // no tendría nada que integrar y el script de R fallaría a mitad de la
-        // corrida buscando archivos que nadie generó.
+        // El dígito 6 es la integración, que compara las salidas de los métodos
+        // 1 a 4. Pedirla sola no tendría nada que integrar y R fallaría a mitad
+        // de la corrida buscando archivos que nadie generó.
         if (value.includes('6') && !/[1-4]/.test(value)) {
           throw new Error('Si incluyes 6 (integración), también debes incluir al menos un método DE (1-4)');
         }

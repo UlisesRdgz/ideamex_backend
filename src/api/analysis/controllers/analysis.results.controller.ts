@@ -25,11 +25,8 @@ import {
 
 /**
  * Devuelve resultados estructurados de un proyecto finalizado.
- * Recorre el directorio de salida de R, clasifica gráficas y tablas por su
- * nombre y arma la respuesta por secciones, para que el frontend no tenga que
- * conocer las convenciones del pipeline.
- * Los cuatro controladores del módulo repiten el mismo preámbulo de validación
- * a propósito: todos exponen archivos del servidor.
+ * Recorre la salida de R, clasifica gráficas y tablas por su nombre y arma la
+ * respuesta por secciones, para que el frontend no conozca esas convenciones.
  */
 export const handleGetProjectResultsStructured = async (
   req: Request,
@@ -209,10 +206,9 @@ export const handleDownloadProjectResultsArchive = async (
       return;
     }
 
-    // El nombre que verá el usuario al descargar se sanitiza porque viaja en una
-    // cabecera HTTP: un título con comillas o saltos de línea podría alterar la
-    // respuesta. El respaldo por identificador cubre el caso de un título que al
-    // sanitizarse queda vacío, por ejemplo si solo tenía emojis.
+    // El nombre viaja en una cabecera HTTP, así que se sanitiza: comillas o
+    // saltos de línea podrían alterar la respuesta. El respaldo cubre títulos
+    // que al sanitizarse quedan vacíos.
     const safeTitle = sanitizeName(project.title) || `project-${project.id_project}`;
     const downloadFileName = `${safeTitle}_results.${archive.extension}`;
     res.setHeader('Content-Disposition', `attachment; filename=\"${downloadFileName}\"`);
@@ -234,11 +230,8 @@ export const handleDownloadProjectResultsArchive = async (
 
 /**
  * Sirve un archivo individual de resultados para visualización o descarga.
- * El endpoint más delicado del módulo: recibe un nombre desde la petición y
- * devuelve contenido del disco. Tres controles lo acotan: el proyecto debe ser
- * del solicitante, el nombre se resuelve dentro del directorio de resultados, y
- * la extensión debe estar en la lista blanca.
- * `download` solo decide la cabecera `Content-Disposition`.
+ * El más delicado del módulo: tres controles lo acotan —proyecto propio, ruta
+ * dentro del directorio de resultados y extensión en lista blanca—.
  */
 export const handleGetProjectResultFile = async (req: Request, res: Response): Promise<void> => {
   try {

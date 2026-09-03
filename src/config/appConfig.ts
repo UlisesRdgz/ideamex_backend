@@ -44,11 +44,8 @@ const INSECURE_JWT_SECRET = 'defaultsecret';
 
 /**
  * Verifica la configuración obligatoria antes de aceptar tráfico.
- *
- * `JWT_SECRET` no tiene valor por defecto de forma deliberada. Cuando lo tenía,
- * un despliegue sin esa variable arrancaba sin avisar y firmaba todos los tokens
- * de sesión con una cadena conocida: el fallo era invisible y el sistema quedaba
- * abierto. Es preferible que el servidor no levante.
+ * `JWT_SECRET` no tiene valor por defecto a propósito: cuando lo tenía, un
+ * despliegue sin la variable firmaba los tokens con una cadena conocida.
  *
  * @function checkRequiredConfig
  * @throws {Error} Si falta alguna variable obligatoria o su valor no es seguro.
