@@ -66,3 +66,16 @@ docker-compose build backend && docker-compose up -d backend
 ```
 
 > El servidor usa el binario **`docker-compose`** (v2.39.4), no el plugin `docker compose`.
+
+## Historia del Dockerfile del backend
+
+La version original la escribio Carlos Perez Calderon el 30-oct-2025 sobre
+`node:18-bullseye`, instalando el cliente de Docker con el paquete `docker.io`
+de Debian. Se sustituyo por la actual, basada en `node:18-bookworm` con el
+`docker-ce-cli` del repositorio oficial, porque el cliente de `docker.io` no
+era compatible con la version del daemon del host y fallaba el `docker exec`
+sobre `ideamex-r`, que es como el backend lanza el pipeline de R.
+
+La version vieja quedo un tiempo como `Dockerfile.bak` en el servidor, sin
+versionar y a medio agregar al indice de git. Se elimino en septiembre de 2026,
+una vez que el Dockerfile vigente quedo versionado en este repositorio.
