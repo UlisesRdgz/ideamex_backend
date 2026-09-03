@@ -13,6 +13,7 @@ sus rutas de `build.context` son relativas al directorio padre. En el servidor v
 ideamex2/
 ├── docker-compose.yml      <- copia de deploy/docker-compose.yml
 ├── .env                    <- credenciales de MariaDB (NO versionado)
+├── backend.env             <- configuracion del backend (NO versionado)
 ├── ideamex_backend/        <- este repositorio
 └── ideamex_version2/       <- repositorio del frontend
 ```
@@ -29,27 +30,24 @@ Para desplegar, copiar este archivo a la raíz de `ideamex2/` antes de levantar.
 | `redis` | `ideamex-redis` | — | `redis:7-alpine` |
 | `r` | `ideamex-r` | — | `./ideamex_backend/R/Dockerfile` |
 
-### Variables requeridas en `ideamex2/.env`
+### Variables de entorno
 
-`MARIADB_DATABASE`, `MARIADB_USER`, `MARIADB_PASSWORD`, `MARIADB_ROOT_PASSWORD`.
+Se reparten en dos archivos, ninguno versionado:
 
-El resto de la configuración del backend (`JWT_SECRET`, `SMTP_*`, `GOOGLE_*`) **no**
-pasa por este archivo.
+| Archivo | Contenido | Lo consume |
+| --- | --- | --- |
+| `ideamex2/.env` | `MARIADB_DATABASE`, `MARIADB_USER`, `MARIADB_PASSWORD`, `MARIADB_ROOT_PASSWORD` | El propio compose, por interpolacion `${VAR}` |
+| `ideamex2/backend.env` | `JWT_SECRET`, `SMTP_*`, `GOOGLE_CLIENT_*`, `SWAGGER_*`, `ANALYSIS_*` | El servicio `backend`, via `env_file` |
 
-> **Cuidado.** El backend no tiene `.dockerignore`, así que el `COPY . .` del Dockerfile
-> hornea `ideamex_backend/.env` dentro de la imagen, y de ahí salen esos valores en
-> producción. Dos consecuencias:
->
-> 1. Los secretos quedan en una capa de la imagen.
-> 2. **Agregar un `.dockerignore` que excluya `.env` tumba el servicio** en la siguiente
->    reconstrucción, porque hoy no hay otra fuente para esas variables. El orden correcto
->    es primero moverlas a `env_file`/`environment` del compose, y después excluir `.env`.
+El bloque `environment:` del servicio `backend` tiene prioridad sobre `backend.env`,
+y ahi viven los valores especificos del contenedor (`DB_HOST=db`,
+`PROJECTS_BASE_PATH=/usr/src/app/projects`, rutas del pipeline de R).
 
-> **Nota.** El Dockerfile fija `ENV NODE_ENV=development` para que `npm install` traiga las
-> dependencias de desarrollo que necesita `npm run build`. Ese valor persiste en la imagen y
-> `dotenv` no lo sobrescribe, así que **el contenedor de producción corre con
-> `NODE_ENV=development`** (verificado con `docker exec`). Se corrige volviendo a
-> `ENV NODE_ENV=production` después del `npm prune`.
+> **Historico.** Hasta septiembre de 2026 el backend no tenia `.dockerignore`, asi que el
+> `COPY . .` del Dockerfile horneaba `ideamex_backend/.env` dentro de la imagen y de ahi
+> salian los secretos en produccion. Se corrigio moviendolos a `backend.env` + `env_file`
+> **antes** de excluir el `.env` del build; hacerlo al reves habria dejado sin
+> `JWT_SECRET` ni credenciales SMTP al contenedor, que aborta en el arranque.
 
 ### Nota sobre `group_add: "125"`
 
@@ -64,5 +62,7 @@ así que reiniciar el contenedor no basta:
 
 ```bash
 cd ~/ideamex2
-docker compose build backend && docker compose up -d backend
+docker-compose build backend && docker-compose up -d backend
 ```
+
+> El servidor usa el binario **`docker-compose`** (v2.39.4), no el plugin `docker compose`.

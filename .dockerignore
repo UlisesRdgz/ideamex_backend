@@ -1,0 +1,22 @@
+# Secretos: la configuracion se inyecta por env_file desde el compose.
+# Sin esta linea el `COPY . .` hornea el .env dentro de una capa de la imagen.
+.env
+.env.*
+
+# Dependencias y compilado: se reinstalan y se generan durante el build.
+node_modules
+dist
+
+# Datos de usuarios: en produccion llegan por volumen, no por la imagen.
+projects
+
+# Control de versiones y ruido del sistema.
+.git
+.gitignore
+*.bak
+.DS_Store
+
+# Documentacion e infraestructura: no hacen falta en tiempo de ejecucion.
+deploy
+README.md
+docker-compose.r.yml
