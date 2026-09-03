@@ -25,17 +25,11 @@ import {
 
 /**
  * Devuelve resultados estructurados de un proyecto finalizado.
- *
- * Es el endpoint que alimenta la vista de resultados: en vez de entregar la
- * lista de archivos que dejó R, recorre el directorio de salida, interpreta los
- * nombres para clasificar cada gráfica y tabla, lee los conteos de genes
- * diferenciales y arma la respuesta ya organizada por secciones. Así el frontend
- * no necesita conocer las convenciones de nombres del pipeline.
- *
- * Los cuatro controladores de este módulo comparten el mismo preámbulo —usuario
- * del token, identificador válido, proyecto propio y en estado `COMPLETED`, y
- * directorio de resultados resuelto dentro de la carpeta de proyectos— porque
- * cada uno expone archivos del servidor y ninguno debe poder omitir un paso.
+ * Recorre el directorio de salida de R, clasifica gráficas y tablas por su
+ * nombre y arma la respuesta por secciones, para que el frontend no tenga que
+ * conocer las convenciones del pipeline.
+ * Los cuatro controladores del módulo repiten el mismo preámbulo de validación
+ * a propósito: todos exponen archivos del servidor.
  */
 export const handleGetProjectResultsStructured = async (
   req: Request,
@@ -240,16 +234,11 @@ export const handleDownloadProjectResultsArchive = async (
 
 /**
  * Sirve un archivo individual de resultados para visualización o descarga.
- *
- * Es el endpoint más delicado del módulo: recibe un nombre de archivo desde la
- * petición y responde con contenido del disco del servidor. Tres controles lo
- * acotan: el proyecto debe pertenecer a quien pide, el nombre se resuelve dentro
- * del directorio de resultados —descartando cualquier intento de salir de él— y
- * la extensión debe estar en la lista blanca, de modo que no se puedan servir
- * archivos ajenos a los que produce el pipeline.
- *
- * El parámetro `download` solo decide la cabecera `Content-Disposition`: en
- * línea para que el navegador muestre una gráfica, o adjunto para descargarla.
+ * El endpoint más delicado del módulo: recibe un nombre desde la petición y
+ * devuelve contenido del disco. Tres controles lo acotan: el proyecto debe ser
+ * del solicitante, el nombre se resuelve dentro del directorio de resultados, y
+ * la extensión debe estar en la lista blanca.
+ * `download` solo decide la cabecera `Content-Disposition`.
  */
 export const handleGetProjectResultFile = async (req: Request, res: Response): Promise<void> => {
   try {

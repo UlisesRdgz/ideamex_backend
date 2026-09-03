@@ -14,12 +14,9 @@ import { appConfig } from './appConfig';
 
 /**
  * Configuración para generar la documentación de Swagger.
- *
- * Aquí vive únicamente lo transversal: los datos de la API, los servidores, el
- * esquema de autenticación y los componentes reutilizables —respuestas de error
- * y códigos de estado comunes— que las rutas referencian con `$ref` para no
- * repetir la misma definición en cada endpoint. La documentación de cada ruta
- * está en los archivos `.docs.ts` de su propio módulo.
+ * Solo lo transversal: datos de la API, servidores, autenticación y los
+ * componentes que las rutas referencian con `$ref`. La documentación de cada
+ * endpoint vive en los `.docs.ts` de su módulo.
  *
  * @constant {Options} swaggerOptions
  */

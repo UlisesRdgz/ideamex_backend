@@ -25,21 +25,9 @@ import {
 
 /**
  * Controlador para iniciar la corrida de análisis de un proyecto.
- *
- * Encadena una secuencia de validaciones cuyo orden importa: cada paso depende
- * del anterior. Primero se alinean los nombres de muestra contra el encabezado
- * real del archivo de conteos, porque el lote y las comparaciones se calculan a
- * partir de esos nombres; luego se deriva el parámetro de lote; después se
- * escriben los nombres nuevos en el archivo; y solo entonces se revalida el
- * resultado en disco.
- *
- * El bloqueo del proyecto se toma al final, ya con todo verificado y el comando
- * de R armado. Hacerlo antes dejaría el proyecto en `PROCESSING` tras un fallo
- * de validación, sin corrida en curso y sin posibilidad de reintentar, ya que la
- * transición de estado no admite volver a `PENDING`.
- *
- * La respuesta es 202: la corrida sigue en segundo plano y el cliente consulta
- * su avance por el endpoint de resultados.
+ * Los cuatro pasos de validación van numerados abajo y su orden no es
+ * intercambiable: cada uno depende del resultado del anterior.
+ * Responde 202 porque la corrida continúa en segundo plano.
  */
 export const handleRunProjectAnalysis = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -157,10 +145,9 @@ export const handleRunProjectAnalysis = async (req: Request, res: Response): Pro
       return;
     }
 
-    // Bloqueo al final, con todo ya verificado. La operación es condicional en
-    // la base (solo cambia el estado si sigue en `PENDING`), de modo que si dos
-    // peticiones simultáneas llegan hasta aquí, únicamente una obtiene el
-    // bloqueo y la otra recibe 409.
+    // Bloqueo al final: hacerlo antes dejaría el proyecto en `PROCESSING` tras un
+    // fallo de validación, sin corrida y sin poder volver a `PENDING`. Es
+    // condicional en la base, así que entre peticiones simultáneas solo una gana.
     const locked = await lockProjectForRun(projectId, user.id_user, runProjectPayload);
 
     if (!locked) {

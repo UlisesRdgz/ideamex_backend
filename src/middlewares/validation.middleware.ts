@@ -2,15 +2,8 @@
  * @file Middleware de validación usando express-validator.
  * Incluye reglas para autenticación y formularios.
  *
- * Cada conjunto exportado es un arreglo de reglas que se coloca en la ruta antes
- * del controlador, seguido siempre de `validateRequest`: las reglas solo
- * acumulan errores, y es ese último middleware el que corta la petición con un
- * 400. Omitirlo dejaría pasar al controlador cualquier dato inválido sin aviso.
- *
- * Esta capa comprueba la forma de la petición y nada más. Las reglas que
- * dependen de datos ya almacenados —que un correo no esté registrado, que las
- * muestras coincidan con el archivo subido— viven en los servicios y
- * controladores, que sí tienen acceso a la base y al sistema de archivos.
+ * Cada arreglo va en la ruta seguido de `validateRequest`, que es quien corta
+ * con un 400: las reglas por sí solas únicamente acumulan errores.
  *
  * @module middlewares/validation.middleware
  * @requires express
@@ -173,23 +166,12 @@ export const validateContactForm = [
 
 /**
  * Reglas de validación para ejecutar el análisis de un proyecto.
- *
- * Es con diferencia el conjunto más extenso del archivo, y la razón es que el
- * cuerpo de esta petición no es un formulario plano sino la configuración
- * completa del experimento: muestras, métodos, contrastes y umbrales, anidados
- * entre sí y con dependencias mutuas. Un valor mal formado no produce un error
- * visible, sino un análisis que corre hasta el final y entrega números
- * incorrectos, así que conviene rechazarlo antes de lanzar el pipeline.
- *
- * Se aceptan dos formas de indicar los métodos por compatibilidad: la cadena
- * compacta de dígitos que usaba la versión anterior (`"1236"`) y el objeto de
- * banderas booleanas del frontend actual (`selectedMethods`). Basta con enviar
- * una de las dos.
- *
- * Estas reglas comprueban la forma del payload. La coherencia con los datos
- * reales —que los nombres de muestra existan en el archivo de conteos, que el
- * diseño de lotes sea corregible— se verifica más adelante, en el controlador de
- * la corrida, porque requiere leer la tabla subida.
+ * Es el conjunto más extenso porque el body trae la configuración completa del
+ * experimento, anidada y con dependencias entre campos. Un valor mal formado no
+ * revienta: produce resultados incorrectos.
+ * Acepta `methods` (cadena compacta, formato anterior) o `selectedMethods`
+ * (banderas del frontend actual). La coherencia con el archivo de conteos se
+ * revisa después, en el controlador de la corrida.
  */
 export const validateRunAnalysis = [
   param('projectId')
