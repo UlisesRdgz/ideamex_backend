@@ -37,8 +37,18 @@ services:
     ports:
       - "5000:5000"
     restart: unless-stopped
-    # Inyecta variables de entorno dentro de este contenedor
+    # Configuracion del backend (JWT_SECRET, SMTP_*, GOOGLE_*, SWAGGER_*).
+    # Antes viajaba dentro de la imagen: el `COPY . .` del Dockerfile horneaba
+    # ideamex_backend/.env. Ahora se inyecta desde fuera y ese .env queda excluido
+    # del build por .dockerignore, para no dejar secretos en las capas de la imagen.
+    env_file:
+      - ./backend.env
+    # Estas tienen prioridad sobre env_file: son especificas del contenedor.
     environment:
+      # Modo de ejecucion. Se fija aqui, y no en backend.env, para que quede
+      # versionado: env_file tiene prioridad sobre el ENV de la imagen, asi que
+      # este es el unico lugar que realmente manda.
+      - NODE_ENV=production
       # 'db' es el nombre del servicio MariaD
       - DB_HOST=db
       # Las siguientes variables leen sus valores del archivo .env
