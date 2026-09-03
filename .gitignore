@@ -162,7 +162,7 @@ Temporary Items
 .apdisk
 
 # Project
-Dockerfile
-R/
+# R/ se versiona completo, incluida la copia integrada de ideamexCLI (codigo de
+# la Dra. Leticia Vega, CC BY-NC 4.0). Ver R/README.md.
 projects/
 docker-compose.r.yml

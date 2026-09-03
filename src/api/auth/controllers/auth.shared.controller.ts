@@ -6,6 +6,7 @@
 
 import jwt from 'jsonwebtoken';
 import { findOrCreateUser } from '../auth.service';
+import { appConfig } from '../../../config/appConfig';
 
 /**
  * Respuesta parcial del endpoint de verificación de token de Google.
@@ -35,7 +36,8 @@ export const createAuthToken = (params: {
       username: params.username,
       email: params.email,
     },
-    process.env.JWT_SECRET || 'defaultsecret',
+    // `appConfig.jwtSecret` está garantizada por `checkRequiredConfig` al arranque.
+    appConfig.jwtSecret,
     { expiresIn: '30d' }
   );
 
