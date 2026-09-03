@@ -1,0 +1,130 @@
+# Author: Carlos Pérez Calderón
+# Date: 30 de Octubre de 2025
+# Descripción: Este docker-compose.yml define y configura todos los contenedores
+version: '3.8'
+
+# --- DEFINICIÓN DE TODOS LOS CONTENEDORES ---
+services:
+
+  # ────────────────────────────────────────────────────
+  # 1. El Frontend (React + Nginx Interno)
+  # ────────────────────────────────────────────────────
+  frontend:
+    # Construye la imagen usando el Dockerfile en la carpeta 'ideamex_version2'
+    build:
+      context: ./ideamex_version2
+      dockerfile: Dockerfile
+    # Asigna un nombre fácil de leer al contenedor
+    container_name: ideamex-frontend
+    # Mapea el puerto 3000 del host al puerto 80 del Contenedor
+    ports:
+      - "3000:80"
+    # Reinicia el contenedor automáticamente si se cae, a menos que lo paremos a mano
+    restart: unless-stopped
+    # Monta la carpeta de proyectos del host para persistencia y acceso de escritura
+    volumes:
+      - /home/ideamex/ideamex2/ideamex_backend/projects:/usr/share/nginx/projects:ro
+  # ----------------------------------------
+  # 2. El Backend API de Node.js
+  # ----------------------------------------
+  backend:
+    # Construye la imagen usando el Dockerfile en 'ideamex_backend'
+    build:
+      context: ./ideamex_backend
+      dockerfile: Dockerfile
+    container_name: ideamex-backend
+    # Mapea el puerto 5000 del Host al 5000 del Contenedor    
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    # Inyecta variables de entorno dentro de este contenedor
+    environment:
+      # 'db' es el nombre del servicio MariaD
+      - DB_HOST=db
+      # Las siguientes variables leen sus valores del archivo .env
+      - DB_NAME=${MARIADB_DATABASE}
+      - DB_USER=${MARIADB_USER}
+      - DB_PASSWORD=${MARIADB_PASSWORD}
+      # redis es el nombre del servicio Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # URL de producción para el callback de Google OAuth 
+      - GOOGLE_CALLBACK_URL=https://iauusmb.ibt.unam.mx/ideamex2/api/auth/google/callback
+      # Ruta interna para almacenamiento de proyectos
+      - PROJECTS_BASE_PATH=/usr/src/app/projects
+      # Acceso a script R dentro de Docker
+      - ANALYSIS_EXECUTION_MODE=docker
+      - ANALYSIS_DOCKER_CONTAINER=ideamex-r
+      - ANALYSIS_DOCKER_SCRIPT_PATH=/app/ideamexCLI/src/RunMainIDEAMEX.r
+      - ANALYSIS_DOCKER_SOURCES_PATH=/app/ideamexCLI/src
+      - ANALYSIS_DOCKER_HOST_PROJECTS_PATH=/usr/src/app/projects
+      - ANALYSIS_DOCKER_CONTAINER_PROJECTS_PATH=/workspace/projects
+      # PDF a PNG
+      - ANALYSIS_PDFTOPPM_BIN=/usr/bin/pdftoppm
+
+    # Agrega al usuario del contenedor al grupo del socket Docker del host
+    group_add:
+    - "125"
+    # Monta la carpeta de proyectos del host para persistencia y permisos de escritura
+    volumes:
+      - ./ideamex_backend/projects:/usr/src/app/projects
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Controla el orden de inicio: no inicia 'backend' hasta que 'db' y 'redis' estén listos
+    depends_on:
+      - db
+      - redis
+
+  # ----------------------------------------
+  # 3. La Base de Datos (MariaDB) 
+  # ----------------------------------------
+  db:
+    # Usa una imagen oficial de MariaDB (no necesita Dockerfile)
+    image: mariadb:10
+    container_name: ideamex-db
+    # Reinicia siempre este contenedor, es crítico
+    restart: always
+    # Variables de entorno leídas del '.env'
+    # MariaDB las usa *solo la primera vez* para crear la BD y el usuario
+    environment:
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USER: ${MARIADB_USER}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+    # Monta el volumen 'mariadb_data' para que los datos sobrevivan a reinicios
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+  # ----------------------------------------
+  # 4. El Caché y Gestor de Sesiones Redis
+  # ----------------------------------------
+  redis:
+    # Usa una imagen oficial y ligera de Redis (Alpine)
+    image: redis:7-alpine
+    container_name: ideamex-redis
+    restart: always
+    # Monta el volumen 'redis_data' para persistir datos de caché/sesión
+    volumes:
+      - redis_data:/data
+
+  # ----------------------------------------
+  # 5. El Motor de R 
+  # ----------------------------------------
+  r:
+    # Construye la imagen desde la subcarpeta 'R' del backend
+    build:
+      context: ./ideamex_backend/R
+      dockerfile: Dockerfile
+    container_name: ideamex-r
+    restart: unless-stopped
+    user: "1000:1000"
+    volumes:
+      - ./ideamex_backend/projects:/workspace/projects
+    # (No necesita 'ports' porque el backend lo usa con 'docker exec')
+
+# -DEFINICIÓN DE LOS VOLÚMENES (Almacenamiento Persistente)
+# Aquí se declaran los "volúmenes" que Docker gestionará
+volumes:
+  # El volumen para los datos de MariaDB
+  mariadb_data:
+  # El volumen para los datos de Redis
+  redis_data:
