@@ -15,6 +15,7 @@ import { Request, Response, NextFunction, RequestHandler } from 'express';
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import { findUserByEmail } from './auth.service';
 import { sendErrorResponse } from '../../utils/response';
+import { appConfig } from '../../config/appConfig';
 
 /**
  * Middleware para validar autenticación mediante Bearer Token.
@@ -36,9 +37,9 @@ export const requireUser: RequestHandler = (req, res, next) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    const secret = process.env.JWT_SECRET || 'defaultsecret';
     // Verifica firma y expiración del JWT de sesión.
-    const decoded = jwt.verify(token, secret) as JwtPayload;
+    // `appConfig.jwtSecret` está garantizada por `checkRequiredConfig` al arranque.
+    const decoded = jwt.verify(token, appConfig.jwtSecret) as JwtPayload;
 
     if (
       typeof decoded !== 'object' ||

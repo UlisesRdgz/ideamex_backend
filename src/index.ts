@@ -19,7 +19,7 @@ import rateLimit from 'express-rate-limit';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsdoc from 'swagger-jsdoc';
 
-import { appConfig } from './config/appConfig';
+import { appConfig, checkRequiredConfig } from './config/appConfig';
 import { checkDatabaseConnection } from './config/db';
 import { checkEmailConnection } from './config/email';
 import swaggerOptions from './config/swagger';
@@ -151,6 +151,10 @@ const startServer = (): void => {
 
 const bootstrap = async (): Promise<void> => {
   try {
+    // Primero la configuración: si falta, no tiene sentido abrir conexiones.
+    checkRequiredConfig();
+    console.log('[CONFIG] Variables obligatorias presentes');
+
     await checkDatabaseConnection();
     console.log('[DB] Conexión exitosa a MariaDB');
 
