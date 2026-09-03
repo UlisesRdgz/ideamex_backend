@@ -28,9 +28,8 @@ limma-voom y NOISeq de Bioconductor e integra sus resultados.
 Un submodulo seria lo natural: guardaria solo un apuntador a la URL y al commit
 exacto, sin copiar codigo ajeno. Pero el repositorio de origen es privado e
 inaccesible, y un submodulo que apunta a una URL que no se puede clonar rompe el
-`git clone --recurse-submodules` de cualquiera. Sin una copia integrada, este
-repositorio no deja constancia de que version del analisis produjo los
-resultados de la tesis.
+`git clone --recurse-submodules` de cualquiera. Por eso este repositorio
+versiona una copia integrada del commit usado para los analisis de la tesis.
 
 La licencia CC BY-NC 4.0 permite expresamente "copiar y redistribuir el material
 en cualquier medio o formato" con atribucion y sin fines comerciales, que es el
@@ -54,8 +53,8 @@ cada archivo; para comprobar que nada cambio:
 cd R/ideamexCLI && shasum -a 256 -c ../MANIFEST-ideamexCLI.sha256
 ```
 
-Cualquier correccion al pipeline debe proponerse a la autora en su repositorio,
-no aplicarse aqui.
+Las correcciones al pipeline deben conservar la atribucion y respetar su
+licencia CC BY-NC 4.0.
 
 ### Procedencia verificada
 
@@ -69,11 +68,3 @@ $
 
 Salida vacia, con `HEAD` en `244c981`: la copia corresponde exactamente a ese
 commit de la autora.
-
-### Correccion pendiente de proponer a la autora
-
-En `src/RunDataAnalysis.r`, `plotMDS` puede devolver la matriz sin nombres de
-muestra; entonces `names(fnDataPlot$x)` queda vacio y la grafica MDS pierde las
-etiquetas. Hay un parche propuesto en
-`~/Documents/Titulacion/_respaldo_despliegue/fix-nombres-muestra-MDS.patch`,
-pendiente de enviarle.

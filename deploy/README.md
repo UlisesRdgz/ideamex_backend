@@ -71,10 +71,10 @@ docker-compose build backend && docker-compose up -d backend
 
 La version original la escribio Carlos Perez Calderon el 30-oct-2025 sobre
 `node:18-bullseye`, instalando el cliente de Docker con el paquete `docker.io`
-de Debian. Se sustituyo por la actual, basada en `node:18-bookworm` con el
-`docker-ce-cli` del repositorio oficial, porque el cliente de `docker.io` no
-era compatible con la version del daemon del host y fallaba el `docker exec`
-sobre `ideamex-r`, que es como el backend lanza el pipeline de R.
+de Debian. La imagen vigente usa `node:20-bookworm` y el `docker-ce-cli` del
+repositorio oficial: el cliente de `docker.io` no era compatible con la version
+del daemon del host y fallaba el `docker exec` sobre `ideamex-r`, que es como el
+backend lanza el pipeline de R.
 
 La version vieja quedo un tiempo como `Dockerfile.bak` en el servidor, sin
 versionar y a medio agregar al indice de git. Se elimino en septiembre de 2026,
@@ -95,16 +95,17 @@ desarrollado por la **Dra. Leticia Vega Alvarado**, que el backend invoca con
 | Ubicacion en el servidor | `ideamex_backend/R/ideamexCLI/` |
 | Ruta dentro del contenedor | `/app/ideamexCLI/src/RunMainIDEAMEX.r` |
 
-`R/Dockerfile` (la receta del contenedor de R, de Carlos Perez Calderon) si esta
-versionado aqui. El contenido de `R/ideamexCLI/` no: se excluye en `.gitignore`.
+`R/Dockerfile` (la receta del contenedor de R, de Carlos Perez Calderon) y la
+copia integrada de `R/ideamexCLI/` estan versionados aqui. El `.gitignore`
+excluye los resultados de ejecucion en `projects/`, no el codigo del pipeline.
 
 ### Por que no es un submodulo
 
 Seria lo natural —un apuntador a URL + commit exacto, sin copiar codigo ajeno—
 pero **el repositorio es privado y no es accesible**, ni siquiera con la cuenta
 del autor de este backend. Un submodulo que apunta a una URL inalcanzable rompe
-el `git clone --recurse-submodules` de cualquiera, asi que por ahora la
-dependencia solo queda documentada aqui.
+el `git clone --recurse-submodules` de cualquiera, asi que se conserva una copia
+integrada y versionada del commit desplegado.
 
 Para convertirlo en submodulo mas adelante basta con obtener acceso de lectura y:
 
@@ -114,8 +115,5 @@ cd R/ideamexCLI && git checkout 244c981 && cd -
 git add .gitmodules R/ideamexCLI && git commit
 ```
 
-### Riesgo abierto
-
-Hoy la unica copia alcanzable del pipeline es el clon en el servidor. Si ese
-disco se pierde, tampoco queda registro reproducible de que version del analisis
-produjo los resultados de la tesis.
+La copia integrada y `R/MANIFEST-ideamexCLI.sha256` permiten reconstruir y
+verificar el pipeline usado por el backend sin depender del disco del servidor.
