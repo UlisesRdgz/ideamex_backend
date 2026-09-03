@@ -108,5 +108,13 @@
     // "skipDefaultLibCheck": true,                      /* Skip type checking .d.ts files that are included with TypeScript. */
     "skipLibCheck": true                                 /* Skip type checking all .d.ts files. */
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "ts-node": {
+    /* Por defecto ts-node solo compila los archivos alcanzables desde el punto
+       de entrada, y src/types/user.d.ts amplia Express de forma global sin que
+       nadie lo importe. Sin esto, `npm run dev` falla con
+       "Property 'user' does not exist on type 'Request'", aunque `npm run build`
+       funcione: tsc si respeta el "include" de arriba. */
+    "files": true
+  }
 }

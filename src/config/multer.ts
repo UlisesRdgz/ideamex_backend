@@ -15,6 +15,7 @@ import multer from 'multer';
 import path from 'path';
 import jwt from 'jsonwebtoken';
 import { isValidExtension, sanitizeName, ensureDirectory, sanitizeEmailPrefix } from '../utils/file';
+import { appConfig } from './appConfig';
 
 /**
  * Configuración del almacenamiento de archivos para proyectos.
@@ -35,11 +36,11 @@ export const projectStorage = multer.diskStorage({
     }
 
     const token = authHeader.split(' ')[1];
-    const secret = process.env.JWT_SECRET || 'defaultsecret';
     let decoded: jwt.JwtPayload;
 
     try {
-      decoded = jwt.verify(token, secret) as jwt.JwtPayload;
+      // `appConfig.jwtSecret` está garantizada por `checkRequiredConfig` al arranque.
+      decoded = jwt.verify(token, appConfig.jwtSecret) as jwt.JwtPayload;
     } catch (err) {
       console.error('[MULTER] Invalid token:', err);
       return cb(withStatus('Invalid or expired token', 401), '');
