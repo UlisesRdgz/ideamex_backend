@@ -107,16 +107,10 @@ export interface AnalysisParameters {
 
 /**
  * Contrato de proyecto expuesto al frontend.
- *
- * Es una de las tres representaciones de un mismo proyecto, y conviene no
- * confundirlas: `ProjectRow` es la fila cruda de MariaDB con sus columnas en
- * `snake_case` y su configuración serializada como texto; `ProjectRecord` es la
- * entidad interna ya validada con la que trabaja el backend; y `Project` es lo
- * que finalmente viaja en las respuestas de la API. `ProjectMapper` convierte de
- * la primera a la segunda, y `ProjectRecord.toProject` de la segunda a esta.
- *
- * Los cuatro campos de configuración inician en `null` y solo se llenan al
- * lanzar la corrida.
+ * Es la última de tres representaciones: `ProjectRow` es la fila cruda de la
+ * base, `ProjectRecord` la entidad interna ya validada, y `Project` lo que viaja
+ * en la API. Convierten `ProjectMapper` y `ProjectRecord.toProject`.
+ * Los cuatro campos de configuración inician en `null`.
  */
 export interface Project {
   id?: number;
@@ -176,13 +170,9 @@ export interface ProjectRecordParams {
 
 /**
  * Entidad interna usada por el backend para operar un proyecto ya normalizado.
- *
- * Conserva los nombres de columna de la base (`id_project`, `user_id`,
- * `created_at`) en lugar de adoptar `camelCase`, para que el mapeo desde la fila
- * sea directo y evidente. La traducción al contrato público ocurre en un único
- * lugar, `toProject`.
- *
- * Solo se construye desde `mapProjectRowToRecord`; instanciarla a mano saltaría
+ * Conserva los nombres de columna de la base para que el mapeo desde la fila sea
+ * directo; la traducción al contrato público vive solo en `toProject`.
+ * Solo se construye desde `mapProjectRowToRecord`: instanciarla a mano saltaría
  * la validación.
  */
 export class ProjectRecord {

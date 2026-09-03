@@ -35,11 +35,9 @@ const normalizeDate = (value: NullableDateValue): Date | null => {
 
 /**
  * Deserializa una de las columnas JSON de `projects`.
- *
- * Estas columnas guardan la configuración del análisis como texto, así que su
- * contenido no lo valida la base: puede venir corrupto o con el formato de una
- * versión anterior del esquema. Se falla con el nombre de la columna para que el
- * error identifique el origen y no un `SyntaxError` anónimo.
+ * La base no valida su contenido, así que puede venir corrupto o con el formato
+ * de una versión anterior. El error incluye la columna para no quedarse en un
+ * `SyntaxError` anónimo.
  *
  * @param columnName - Columna de la que proviene el valor, usada en el error.
  * @param value - Texto JSON almacenado.
@@ -62,14 +60,10 @@ const parseJsonOrNull = (
 };
 
 /*
- * Validadores estrictos.
- *
- * No hacen coerción de tipos a propósito: un `"true"` en texto o un número donde
- * se espera cadena indican que lo guardado no corresponde al contrato, y es
- * preferible fallar al leer que arrastrar un valor mal tipado hasta el pipeline
- * de R, donde el error aparecería como un resultado incorrecto y no como una
- * excepción. El `fieldName` se propaga para que el mensaje señale la ruta exacta
- * dentro del JSON (por ejemplo `samples[3].name`).
+ * Validadores estrictos: no hacen coerción de tipos a propósito. Preferible
+ * fallar al leer que arrastrar un valor mal tipado hasta el pipeline de R, donde
+ * saldría como resultado incorrecto y no como excepción. El `fieldName` señala
+ * la ruta exacta dentro del JSON (por ejemplo `samples[3].name`).
  */
 
 const toStrictNonEmptyString = (value: unknown, fieldName: string): string => {
@@ -133,12 +127,9 @@ const normalizeParameters = (value: unknown): AnalysisParameters => {
 
 /**
  * Valida la lista de muestras del proyecto.
- *
- * A diferencia del resto, aquí sí se acepta más de un tipo de entrada: `batch` y
- * `originalName` se convierten con `String()` porque el frontend puede mandar el
- * lote como número. Lo que no se tolera es la cadena vacía tras recortar
- * espacios: `""` y `null` significan cosas distintas para el pipeline (sin lote
- * frente a lote en blanco), y confundirlos altera la corrección por lotes.
+ * Aquí sí se acepta más de un tipo: el frontend puede mandar el lote como
+ * número. Lo que no se tolera es la cadena vacía, porque `""` y `null` significan
+ * cosas distintas para el pipeline y confundirlos altera la corrección por lotes.
  */
 const normalizeSamples = (value: unknown): Sample[] => {
   if (!Array.isArray(value)) {
@@ -193,12 +184,10 @@ const normalizeComparisons = (value: unknown): ProjectComparison[] => {
 };
 
 /*
- * Envolturas que dejan pasar el `null`.
- *
- * Un proyecto recién creado existe en la base con su archivo subido pero sin
- * configuración de análisis: esas cuatro columnas quedan en `NULL` hasta que el
- * usuario lanza la corrida. Los validadores de arriba son estrictos por diseño,
- * así que se antepone este filtro en lugar de relajarlos.
+ * Envolturas que dejan pasar el `null`. Un proyecto recién creado tiene esas
+ * cuatro columnas en `NULL` hasta que se lanza la corrida; como los validadores
+ * de arriba son estrictos por diseño, se antepone este filtro en vez de
+ * relajarlos.
  */
 
 const normalizeSelectedMethodsOrNull = (value: unknown | null): MethodsSelection | null => {
@@ -235,13 +224,9 @@ const normalizeComparisonsOrNull = (value: unknown | null): ProjectComparison[] 
 
 /**
  * Verifica que la configuración del análisis esté completa o ausente por entero.
- *
- * Las cuatro columnas se escriben juntas al lanzar la corrida, así que un estado
- * intermedio —por ejemplo muestras sin comparaciones— solo puede venir de una
- * escritura interrumpida o de una migración a medias. Es un caso que el resto
- * del código no contempla: los controladores asumen que si hay muestras hay
- * parámetros. Se detecta aquí, al leer, en vez de fallar más adelante con un
- * `undefined` inexplicable al construir el comando de R.
+ * Las cuatro columnas se escriben juntas, así que un estado intermedio solo
+ * puede venir de una escritura interrumpida. Los controladores asumen que si hay
+ * muestras hay parámetros, y conviene detectarlo al leer y no más adelante.
  *
  * @throws {Error} Si unas están presentes y otras no.
  */
@@ -291,16 +276,10 @@ const normalizeProjectConfig = (row: ProjectRow): {
 
 /**
  * Convierte una fila de `projects` en la entidad interna `ProjectRecord`.
- *
- * Único punto de entrada del módulo: todo lo que el backend lee de la tabla pasa
- * por aquí, de modo que el resto del código trabaja siempre con datos ya
- * validados y nunca con la fila cruda.
- *
- * El criterio ante un campo faltante difiere según su papel. Las columnas JSON
- * son estrictas y hacen fallar la lectura, porque de ellas depende la corrección
- * del análisis. Los campos descriptivos, en cambio, degradan a un valor por
- * defecto: un título vacío afea la interfaz, pero no justifica dejar
- * inaccesible un proyecto con resultados válidos.
+ * Único punto de entrada: el resto del backend nunca ve la fila cruda.
+ * Ante un campo faltante el criterio cambia según su papel: las columnas JSON
+ * hacen fallar la lectura, porque de ellas depende la corrección del análisis;
+ * los descriptivos degradan a un valor por defecto.
  *
  * @param row - Fila tal como la devuelve MariaDB.
  * @returns Entidad lista para usarse en servicios y controladores.

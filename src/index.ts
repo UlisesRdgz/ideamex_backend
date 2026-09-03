@@ -64,12 +64,9 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
 const docsPath = `${appConfig.basePath}docs`;
 
 // Canonicaliza /docs -> /docs/ con redirección relativa, sin romper prefijos en reverse proxy.
-//
-// Swagger UI resuelve sus recursos (hojas de estilo y scripts) con rutas
-// relativas, así que necesita la barra final para que apunten dentro de /docs/ y
-// no al directorio padre. La redirección se emite como ruta relativa —"docs/" y
-// no "/docs/"— porque Express solo ve "/": nginx ya quitó el prefijo
-// /ideamex2/api/, y una ruta absoluta mandaría al usuario fuera de la aplicación.
+// Swagger UI resuelve sus recursos con rutas relativas y necesita la barra final.
+// Se redirige a "docs/" y no a "/docs/" porque Express solo ve "/": nginx ya
+// quitó el prefijo, y una ruta absoluta sacaría al usuario de la aplicación.
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.path === docsPath && !req.originalUrl.endsWith('/')) {
     res.redirect(301, 'docs/');
@@ -115,16 +112,10 @@ app.get(appConfig.basePath, (req: Request, res: Response) => {
   sendSuccessResponse(res, `Bienvenido a la API de ${appConfig.appName}`, null, 200);
 });
 
-// Manejador global de errores.
-//
-// Debe declararse al final y con los cuatro parámetros: Express identifica un
-// manejador de errores por su aridad, y si `next` se omite lo trata como un
-// middleware normal que nunca recibirá las excepciones.
-//
-// Su papel es traducir errores que se originan fuera de los controladores
-// —el parseo del body y las validaciones de multer ocurren antes de que estos
-// se ejecuten— a la misma forma de respuesta que usa el resto de la API, para
-// que el frontend no tenga que distinguir de dónde vino el fallo.
+// Manejador global de errores. Va al final y con los cuatro parámetros: Express
+// lo identifica por su aridad, y sin `next` lo trataría como middleware normal.
+// Traduce los errores que ocurren antes de los controladores —parseo del body,
+// validaciones de multer— a la misma forma de respuesta que el resto de la API.
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('[ERROR] Unhandled:', err);
 
@@ -178,12 +169,10 @@ const startServer = (): void => {
 
 /**
  * Arranque de la aplicación.
- *
  * Verifica configuración, base de datos y correo antes de abrir el puerto, y
- * termina el proceso si algo falla. Es deliberado que no arranque a medias: bajo
- * pm2 un `exit(1)` provoca reintentos y, si el fallo persiste, deja el
- * contenedor detenido con el error en el log. Escuchar peticiones sin base de
- * datos daría errores intermitentes mucho más difíciles de diagnosticar.
+ * termina el proceso si algo falla. Es deliberado que no arranque a medias:
+ * escuchar peticiones sin base daría errores intermitentes difíciles de
+ * diagnosticar, mientras que un `exit(1)` deja el fallo visible en el log.
  */
 const bootstrap = async (): Promise<void> => {
   try {

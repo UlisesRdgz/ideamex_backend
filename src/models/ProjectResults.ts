@@ -8,12 +8,9 @@
 
 /**
  * Estado de la corrida tal como lo consume el frontend.
- *
- * Cuidado al leer el código: no es el mismo tipo que `ProjectStatus` de
- * `models/Project`, que usa mayúsculas (`PENDING`, `PROCESSING`, `COMPLETED`,
- * `FAILED`) y es el que guarda la base. Este es su equivalente en minúsculas
- * para la respuesta de la API, y `PROCESSING` corresponde aquí a `running`. La
- * conversión ocurre en `mapProjectStatusToRunStatus`.
+ * Ojo: no es `ProjectStatus` de `models/Project`, que va en mayúsculas y es el
+ * que guarda la base. Este es su equivalente en minúsculas, con `PROCESSING`
+ * mapeado a `running`. Convierte `mapProjectStatusToRunStatus`.
  */
 export type ProjectRunStatus = 'pending' | 'running' | 'completed' | 'failed';
 
@@ -32,14 +29,9 @@ export type DifferentialMethod = 'EdgeR' | 'DESeq2' | 'Limma' | 'NOISeq';
 
 /**
  * Tipo de gráfica, deducido del nombre del archivo que genera R.
- *
- * Conviven dos convenciones porque el pipeline no las unificó: las de análisis
- * exploratorio salen con nombres cortos (`boxplot`, `pca`, `mds`) y las de
- * comparación con el prefijo `plot` (`plotVolcano`, `plotMDS`). Por eso `mds` y
- * `plotMDS` aparecen ambos: son la misma gráfica en etapas distintas.
- *
- * La cadena vacía es el valor de reserva cuando el nombre no coincide con ningún
- * patrón conocido; el archivo se sigue exponiendo, solo que sin clasificar.
+ * Conviven dos convenciones del pipeline: nombres cortos en el análisis
+ * exploratorio (`mds`) y con prefijo `plot` en las comparaciones (`plotMDS`).
+ * La cadena vacía es el valor de reserva: el archivo se expone sin clasificar.
  */
 export type PlotType =
   | 'boxplot'
@@ -96,11 +88,9 @@ export type Plot = {
 
 /**
  * Resultado de un contraste concreto dentro de un método.
- *
- * `significant` no es la suma de `upregulated` y `downregulated`: cuenta los
- * genes que pasan el umbral de p-valor ajustado, incluidos los que no alcanzan
- * el umbral de log fold-change y por tanto no se clasifican en ninguna
- * dirección. Los tres números se leen de archivos distintos del pipeline.
+ * `significant` no es la suma de los otros dos: cuenta los genes que pasan el
+ * p-valor ajustado, incluidos los que no alcanzan el umbral de log fold-change
+ * y por tanto no se clasifican en ninguna dirección.
  */
 export type DifferentialExpressionComparison = {
   name: string;
@@ -151,15 +141,9 @@ export type IntegratedResultsTable = {
 
 /**
  * Respuesta completa del endpoint de resultados.
- *
- * Su estructura refleja las secciones de la interfaz, no la del pipeline: el
- * backend recorre el directorio de salida de R, clasifica los archivos y los
- * agrupa en estos cuatro bloques —resumen, análisis exploratorio, expresión
- * diferencial por método e integración—, de modo que el frontend pinte cada
- * pestaña sin volver a interpretar nombres de archivo.
- *
- * Las rutas expuestas son siempre URLs de descarga del propio backend, nunca
- * rutas del sistema de archivos del servidor.
+ * Su estructura refleja las secciones de la interfaz, no la del pipeline: cada
+ * bloque corresponde a una pestaña del frontend.
+ * Las rutas son siempre URLs de descarga del backend, nunca rutas del disco.
  */
 export interface ProjectResults {
   projectId: string;

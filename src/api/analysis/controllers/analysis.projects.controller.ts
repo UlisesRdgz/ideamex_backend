@@ -30,18 +30,10 @@ import {
 
 /**
  * Controlador para manejar la carga de un nuevo proyecto.
- *
- * Conviene tener presente que para cuando este controlador se ejecuta, multer ya
- * escribió el archivo en disco: el middleware corre antes y decide la ruta a
- * partir del token y del título. De ahí que cada rama de error tenga que
- * limpiar lo que quedó escrito, o el servidor iría acumulando archivos
- * huérfanos de proyectos que nunca se crearon.
- *
- * El duplicado de título se revisa dos veces, y no es redundancia: la primera
- * consulta da un 409 claro sin depender del error del motor, pero entre esa
- * consulta y el `INSERT` cabe otra petición del mismo usuario. La restricción
- * única de la tabla cierra esa ventana, y el bloque `catch` traduce su error al
- * mismo 409.
+ * Cuando esto se ejecuta, multer ya escribió el archivo en disco: por eso cada
+ * rama de error tiene que limpiarlo, o quedarían archivos huérfanos.
+ * El título duplicado se revisa dos veces: la consulta previa da un 409 claro, y
+ * la restricción única cierra la ventana hasta el `INSERT`.
  */
 export const handleProjectUpload = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -196,16 +188,10 @@ export const handleGetUserProjects = async (req: Request, res: Response): Promis
 
 /**
  * Controlador para eliminar un proyecto del usuario autenticado.
- *
- * Borra el registro y también la carpeta del proyecto en disco. Como la
- * convención de rutas cambió a lo largo del desarrollo, se resuelve una lista de
- * ubicaciones candidatas en lugar de una sola, para que los proyectos antiguos
- * no dejen archivos atrás.
- *
- * Un proyecto en `PROCESSING` está protegido: borrar su carpeta mientras R
- * escribe en ella dejaría el proceso trabajando sobre rutas inexistentes. El
- * parámetro `force` permite saltarse esa protección, pensado para corridas que
- * se quedaron colgadas y nunca cambiarán de estado.
+ * Borra el registro y su carpeta. La convención de rutas cambió durante el
+ * desarrollo, así que se resuelven varias ubicaciones candidatas.
+ * Un proyecto en `PROCESSING` está protegido, porque R sigue escribiendo en esa
+ * carpeta; `force` salta esa protección para corridas colgadas.
  */
 export const handleDeleteProject = async (req: Request, res: Response): Promise<void> => {
   try {
