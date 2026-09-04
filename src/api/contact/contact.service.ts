@@ -12,7 +12,14 @@
 
 import { pool } from '../../config/db';
 import { emailTransporter } from '../../config/email';
-import escapeHtml from 'escape-html';
+import {
+  buildEmailShell,
+  buildLogoAttachment,
+  buildSender,
+  COLORS,
+  EMAIL_FOOTER,
+  escapeHTML,
+} from '../../utils/emailLayout';
 import { ContactRequest } from '../../models/ContactRequest';
 
 /**
@@ -54,18 +61,69 @@ export const saveContactRequest = async (
 export const notifyAdminByEmail = async (
   request: Omit<ContactRequest, 'id_contact_request' | 'created_at'>
 ): Promise<void> => {
+  // Este aviso lo lee el equipo de IDEAMEX, no el visitante: va siempre en
+  // español y no sigue el idioma con el que se llenó el formulario.
+  const fields: Array<{ label: string; value: string; preserveLineBreaks?: boolean }> = [
+    { label: 'Nombre', value: request.full_name },
+    { label: 'Correo', value: request.email },
+    { label: 'Teléfono', value: request.phone },
+    { label: 'Asunto', value: request.subject },
+    { label: 'Mensaje', value: request.message, preserveLineBreaks: true },
+  ];
+
   // Escapa todos los campos para evitar inyección HTML en el correo.
+  const rows = fields
+    .map(({ label, value, preserveLineBreaks }) => {
+      const safeValue = preserveLineBreaks
+        ? escapeHTML(value).replace(/\r?\n/g, '<br />')
+        : escapeHTML(value);
+
+      return `                <tr>
+                  <td style="padding:10px 0;border-bottom:1px solid ${COLORS.border};" valign="top">
+                    <p style="margin:0 0 4px 0;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:${COLORS.mutedText};">${label}</p>
+                    <p style="margin:0;font-size:15px;line-height:22px;color:${COLORS.bodyText};">${safeValue}</p>
+                  </td>
+                </tr>`;
+    })
+    .join('\n');
+
+  const contentHTML = `              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding:28px 40px 4px 40px;">
+                    <p style="margin:0;font-size:20px;font-weight:bold;color:${COLORS.brand};">Nueva solicitud de contacto</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 40px 32px 40px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+${rows}
+                    </table>
+                  </td>
+                </tr>
+              </table>`;
+
+  const textBody = [
+    'Nueva solicitud de contacto',
+    '',
+    ...fields.map(({ label, value }) => `${label}: ${value}`),
+    '',
+    EMAIL_FOOTER,
+  ].join('\n');
+
   await emailTransporter.sendMail({
-    from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
-    to: 'ideamex.unam@gmail.com',
-    subject: `Nueva solicitud de contacto: ${escapeHtml(request.subject)}`,
-    html: `
-      <h2>Solicitud de contacto</h2>
-      <p><strong>Nombre:</strong> ${escapeHtml(request.full_name)}</p>
-      <p><strong>Correo:</strong> ${escapeHtml(request.email)}</p>
-      <p><strong>Teléfono:</strong> ${escapeHtml(request.phone)}</p>
-      <p><strong>Asunto:</strong> ${escapeHtml(request.subject)}</p>
-      <p><strong>Mensaje:</strong><br/>${escapeHtml(request.message)}</p>
-    `,
+    from: buildSender(),
+    // Configurable por entorno; el valor de respaldo es el buzón que se venía usando.
+    to: process.env.CONTACT_NOTIFICATION_EMAIL || 'ideamex.unam@gmail.com',
+    // Permite responder al visitante directamente desde el aviso.
+    replyTo: request.email,
+    subject: `Nueva solicitud de contacto: ${request.subject}`,
+    text: textBody,
+    html: buildEmailShell({
+      language: 'es',
+      title: 'Nueva solicitud de contacto',
+      preheader: `${request.full_name} escribió sobre: ${request.subject}`,
+      contentHTML,
+    }),
+    attachments: [buildLogoAttachment()],
   });
 };

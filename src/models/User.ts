@@ -6,6 +6,8 @@
  * 
  * @author Ulises Rodríguez García
  */
+import { SupportedLanguage } from '../config/i18n';
+
 export interface User {
   /**
    * Identificador único del usuario (clave primaria).
@@ -71,4 +73,10 @@ export interface User {
    * Proveedor de autenticación: `local` o `google`.
    */
   auth_provider: 'local' | 'google';
+
+  /**
+   * Idioma elegido por el usuario para la cuenta.
+   * Determina en qué idioma se le envían los correos transaccionales.
+   */
+  language: SupportedLanguage;
 }

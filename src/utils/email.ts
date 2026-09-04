@@ -2,14 +2,199 @@
  * @file Utilidad para enviar correos electrónicos.
  * Contiene funciones para enviar correos relacionados con la autenticación de usuarios.
  *
+ * Cada mensaje se compone en un único idioma —el de la cuenta— para que asunto
+ * y cuerpo nunca queden mezclados.
+ *
  * @module utils/email
  * @requires nodemailer
  * @requires ../config/email
- * 
+ *
  * @author Ulises Rodríguez García
  */
 
 import { emailTransporter } from '../config/email';
+import { DEFAULT_LANGUAGE, SupportedLanguage } from '../config/i18n';
+import {
+  buildEmailShell,
+  buildLogoAttachment,
+  buildSender,
+  COLORS,
+  EMAIL_FOOTER,
+  escapeHTML,
+} from './emailLayout';
+
+/** Base pública del frontend a la que apuntan los enlaces de los correos. */
+const FRONTEND_BASE_URL = 'https://iauusmb.ibt.unam.mx/ideamex2';
+
+/** Textos de un correo transaccional con enlace de un solo uso. */
+interface EmailCopy {
+  subject: string;
+  preheader: string;
+  /** Titular: enuncia la acción, no saluda, porque compite con el asunto en la bandeja. */
+  title: string;
+  body: string;
+  button: string;
+  expiry: string;
+  ignore: string;
+}
+
+/**
+ * Textos del correo de activación por idioma.
+ */
+const ACTIVATION_COPY: Record<SupportedLanguage, EmailCopy> = {
+  es: {
+    subject: 'Activa tu cuenta de IDEAMEX',
+    preheader: 'Confirma tu correo para empezar a usar IDEAMEX.',
+    title: 'Activa tu cuenta',
+    body: 'Bienvenido a IDEAMEX. Confirma tu correo para empezar a usar la plataforma.',
+    button: 'Activar cuenta',
+    expiry: 'Este enlace caduca en 24 horas.',
+    ignore: 'Si no creaste esta cuenta, puedes ignorar este mensaje.',
+  },
+  en: {
+    subject: 'Activate your IDEAMEX account',
+    preheader: 'Confirm your email address to start using IDEAMEX.',
+    title: 'Activate your account',
+    body: 'Welcome to IDEAMEX. Confirm your email address to start using the platform.',
+    button: 'Activate account',
+    expiry: 'This link expires in 24 hours.',
+    ignore: "If you didn't create this account, you can ignore this message.",
+  },
+  fr: {
+    subject: 'Activez votre compte IDEAMEX',
+    preheader: 'Confirmez votre adresse e-mail pour commencer à utiliser IDEAMEX.',
+    title: 'Activez votre compte',
+    body: 'Bienvenue sur IDEAMEX. Confirmez votre adresse e-mail pour commencer à utiliser la plateforme.',
+    button: 'Activer le compte',
+    expiry: 'Ce lien expire dans 24 heures.',
+    ignore: "Si vous n'avez pas créé ce compte, vous pouvez ignorer ce message.",
+  },
+};
+
+/**
+ * Textos del correo de restablecimiento de contraseña por idioma.
+ */
+const PASSWORD_RESET_COPY: Record<SupportedLanguage, EmailCopy> = {
+  es: {
+    subject: 'Restablece tu contraseña de IDEAMEX',
+    preheader: 'Solicitaste cambiar tu contraseña de IDEAMEX.',
+    title: 'Restablece tu contraseña',
+    body: 'Solicitaste cambiar tu contraseña. Elige una nueva desde el siguiente botón.',
+    button: 'Restablecer contraseña',
+    expiry: 'Este enlace caduca en 1 hora.',
+    ignore: 'Si no solicitaste el cambio, puedes ignorar este mensaje: tu contraseña no cambiará.',
+  },
+  en: {
+    subject: 'Reset your IDEAMEX password',
+    preheader: 'You asked to change your IDEAMEX password.',
+    title: 'Reset your password',
+    body: 'You asked to change your password. Choose a new one using the button below.',
+    button: 'Reset password',
+    expiry: 'This link expires in 1 hour.',
+    ignore:
+      "If you didn't request this change, you can ignore this message: your password won't change.",
+  },
+  fr: {
+    subject: 'Réinitialisez votre mot de passe IDEAMEX',
+    preheader: 'Vous avez demandé à changer votre mot de passe IDEAMEX.',
+    title: 'Réinitialiser le mot de passe',
+    body: 'Vous avez demandé à changer votre mot de passe. Choisissez-en un nouveau avec le bouton ci-dessous.',
+    button: 'Réinitialiser le mot de passe',
+    expiry: 'Ce lien expire dans 1 heure.',
+    ignore:
+      "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : votre mot de passe restera inchangé.",
+  },
+};
+
+/**
+ * Compone el contenido de un correo transaccional con botón de acción.
+ *
+ * @param copy - Textos ya resueltos en el idioma del destinatario.
+ * @param actionLink - Enlace de un solo uso al que apunta el botón.
+ * @returns Fragmento HTML sin encabezado ni pie.
+ */
+const buildTransactionalContent = (copy: EmailCopy, actionLink: string): string => {
+  // El token viaja dentro del enlace y termina interpolado en el HTML, así que se
+  // escapa por principio aunque hoy solo contenga caracteres hexadecimales.
+  const safeLink = escapeHTML(actionLink);
+
+  return `              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="left" style="padding:28px 40px 0 40px;">
+                    <p style="margin:0;font-size:26px;line-height:34px;font-weight:bold;color:${COLORS.brand};">${copy.title}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="left" style="padding:14px 40px 0 40px;">
+                    <p style="margin:0;font-size:16px;line-height:26px;color:${COLORS.bodyText};">${copy.body}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="left" style="padding:28px 40px 0 40px;">
+                    <a href="${safeLink}"
+                       style="display:inline-block;padding:14px 30px;background-color:${COLORS.brand};color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;border-radius:8px;">${copy.button}</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:28px 40px 0 40px;">
+                    <div style="height:1px;background-color:${COLORS.border};font-size:0;line-height:0;">&nbsp;</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="left" style="padding:18px 40px 32px 40px;">
+                    <p style="margin:0;font-size:13px;line-height:20px;color:${COLORS.mutedText};">${copy.expiry} ${copy.ignore}</p>
+                  </td>
+                </tr>
+              </table>`;
+};
+
+/**
+ * Versión en texto plano del mensaje.
+ *
+ * Se envía junto al HTML para los clientes que no lo muestran y porque un correo
+ * con ambas partes puntúa mejor en los filtros de spam. Aquí sí aparece el
+ * enlace completo: en texto plano no hay botón sobre el que pulsar.
+ */
+const buildTransactionalText = (copy: EmailCopy, actionLink: string): string =>
+  [
+    copy.title,
+    '',
+    copy.body,
+    actionLink,
+    '',
+    `${copy.expiry} ${copy.ignore}`,
+    '',
+    EMAIL_FOOTER,
+  ].join('\n');
+
+/**
+ * Envía un correo transaccional con botón de acción.
+ *
+ * @param params.email - Destinatario.
+ * @param params.copy - Textos ya resueltos en su idioma.
+ * @param params.actionLink - Enlace de un solo uso.
+ * @param params.language - Idioma del mensaje.
+ */
+const sendTransactionalEmail = async (params: {
+  email: string;
+  copy: EmailCopy;
+  actionLink: string;
+  language: SupportedLanguage;
+}): Promise<void> => {
+  await emailTransporter.sendMail({
+    from: buildSender(),
+    to: params.email,
+    subject: params.copy.subject,
+    text: buildTransactionalText(params.copy, params.actionLink),
+    html: buildEmailShell({
+      language: params.language,
+      title: params.copy.subject,
+      preheader: params.copy.preheader,
+      contentHTML: buildTransactionalContent(params.copy, params.actionLink),
+    }),
+    attachments: [buildLogoAttachment()],
+  });
+};
 
 /**
  * Envía un correo de activación al usuario con un enlace para activar su cuenta.
@@ -18,17 +203,20 @@ import { emailTransporter } from '../config/email';
  * @function sendActivationEmail
  * @param email - Dirección de correo electrónico del destinatario.
  * @param token - Token de activación único.
+ * @param language - Idioma de la cuenta; determina asunto y cuerpo.
  * @throws Error si ocurre un problema al enviar el correo.
  */
-export const sendActivationEmail = async (email: string, token: string): Promise<void> => {
+export const sendActivationEmail = async (
+  email: string,
+  token: string,
+  language: SupportedLanguage = DEFAULT_LANGUAGE
+): Promise<void> => {
   // Link orientado al frontend público, no al endpoint API interno.
-  const activationLink = `https://iauusmb.ibt.unam.mx/ideamex2/auth/activate?token=${token}`;
-
-  await emailTransporter.sendMail({
-    from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
-    to: email,
-    subject: 'Activate your IDEAMEX Account',
-    html: getActivationEmailHTML(activationLink),
+  await sendTransactionalEmail({
+    email,
+    copy: ACTIVATION_COPY[language],
+    actionLink: `${FRONTEND_BASE_URL}/auth/activate?token=${encodeURIComponent(token)}`,
+    language,
   });
 };
 
@@ -39,106 +227,19 @@ export const sendActivationEmail = async (email: string, token: string): Promise
  * @function sendPasswordResetEmail
  * @param email - Dirección de correo electrónico del usuario.
  * @param token - Token generado para el restablecimiento de contraseña.
+ * @param language - Idioma de la cuenta; determina asunto y cuerpo.
  * @throws Error si ocurre un problema al enviar el correo.
  */
-export const sendPasswordResetEmail = async (email: string, token: string): Promise<void> => {
+export const sendPasswordResetEmail = async (
+  email: string,
+  token: string,
+  language: SupportedLanguage = DEFAULT_LANGUAGE
+): Promise<void> => {
   // Token via query param para que el frontend renderice formulario de cambio de contraseña.
-  const resetLink = `https://iauusmb.ibt.unam.mx/ideamex2/auth/reset-password?token=${token}`;
-
-  await emailTransporter.sendMail({
-    from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
-    to: email,
-    subject: 'Password Reset Request',
-    html: `
-      <h1>Password Reset</h1>
-      <p>Click the link below to reset your password:</p>
-      <a href="${resetLink}">${resetLink}</a>
-    `,
+  await sendTransactionalEmail({
+    email,
+    copy: PASSWORD_RESET_COPY[language],
+    actionLink: `${FRONTEND_BASE_URL}/auth/reset-password?token=${encodeURIComponent(token)}`,
+    language,
   });
 };
-
-/**
- * Plantilla HTML del correo de activación.
- *
- * @param activationLink - Enlace de activación para el usuario.
- * @returns HTML en string listo para enviar por correo.
- */
-function getActivationEmailHTML(activationLink: string): string {
-  // Plantilla inline para evitar dependencias de assets externos en el backend.
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <style>
-    body {
-      background-color: #f1f1f1;
-      margin: 0;
-      padding: 20px 0;
-      font-family: Tahoma, sans-serif;
-    }
-    .card {
-      max-width: 600px;
-      margin: auto;
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-      overflow: hidden;
-      text-align: center;
-    }
-    .header {
-      background: #03355a;
-      padding: 16px;
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .header img {
-      width: 40px;
-      margin-right: 8px;
-    }
-    .title {
-      font-size: 24px;
-      margin: 0;
-    }
-    .content {
-      padding: 20px;
-    }
-    .welcome {
-      font-size: 20px;
-      font-weight: bold;
-      color: #03355a;
-      margin-bottom: 16px;
-    }
-    .instruction {
-      font-size: 16px;
-      color: #333;
-      margin-bottom: 20px;
-    }
-    .button {
-      display: inline-block;
-      padding: 12px 24px;
-      background-color: #03355a;
-      color: white;
-      text-decoration: none;
-      font-weight: bold;
-      border-radius: 12px;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="header">
-      <img src="https://i.postimg.cc/jjLvcyqj/ideamex-logo.png" alt="IDEAMEX Logo" />
-      <h1 class="title">IDEAMEX</h1>
-    </div>
-    <div class="content">
-      <div class="welcome">¡Bienvenido a <span style="color:#d59f0f">IDEA</span><span style="color:#03355a">MEX</span>!</div>
-      <p class="instruction">Haz clic en el siguiente botón para activar tu cuenta:</p>
-      <a href="${activationLink}" class="button">Activar cuenta</a>
-    </div>
-  </div>
-</body>
-</html>`;
-}

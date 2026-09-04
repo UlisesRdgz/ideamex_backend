@@ -48,7 +48,9 @@ export const requestPasswordReset = async (req: Request, res: Response): Promise
 
     // Envía enlace de recuperación al correo registrado.
     await updateUserResetToken(user.id_user, resetToken, expiration);
-    await sendPasswordResetEmail(email, resetToken);
+    // Se usa el idioma guardado en la cuenta: quien pide recuperar la contraseña
+    // puede estar en otro navegador que el del registro.
+    await sendPasswordResetEmail(email, resetToken, user.language);
 
     sendSuccessResponse(res, 'Password reset email sent');
   } catch (error) {

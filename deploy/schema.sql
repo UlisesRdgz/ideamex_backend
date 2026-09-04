@@ -64,6 +64,7 @@ CREATE TABLE `users` (
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `google_id` varchar(255) DEFAULT NULL,
   `auth_provider` enum('local','google') NOT NULL DEFAULT 'local',
+  `language` enum('es','en','fr') NOT NULL DEFAULT 'es',
   PRIMARY KEY (`id_user`),
   UNIQUE KEY `uk_users_email` (`email`),
   UNIQUE KEY `uk_users_google_id` (`google_id`)

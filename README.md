@@ -56,6 +56,7 @@ SMTP_USER=usuario@example.org
 SMTP_PASSWORD=tu-contrasena-smtp
 SMTP_FROM_NAME=IDEAMEX
 SMTP_FROM_EMAIL=usuario@example.org
+CONTACT_NOTIFICATION_EMAIL=ideamex.unam@gmail.com
 ```
 
 Importa [`deploy/schema.sql`](deploy/schema.sql) en una base vacía antes de
@@ -64,6 +65,10 @@ arrancar:
 ```bash
 mysql -u root -p ideamex < deploy/schema.sql
 ```
+
+Sobre una base que ya existía, aplica en orden los archivos de
+[`deploy/migrations/`](deploy/migrations); `schema.sql` ya los incluye, así que
+una base nueva no los necesita.
 
 ### Variables de entorno
 
@@ -76,6 +81,7 @@ mysql -u root -p ideamex < deploy/schema.sql
 | `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | **Sí** | — | Conexión a MariaDB. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | **Sí** | — | Servidor de correo para activación de cuentas y recuperación de contraseña. |
 | `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL` | **Sí** | — | Remitente de los correos. |
+| `CONTACT_NOTIFICATION_EMAIL` | No | `ideamex.unam@gmail.com` | Buzón que recibe los avisos del formulario de contacto. |
 | `SWAGGER_USER`, `SWAGGER_PASSWORD` | No | `admin` / `password123` | Credenciales de `/docs/`. Cámbialas en cualquier despliegue accesible. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` | No | — | Necesarias solo para el inicio de sesión con Google. |
 | `PROJECTS_BASE_PATH` | No | `./projects` | Raíz donde se guardan archivos y resultados. |
@@ -171,13 +177,14 @@ src/
 │   ├── analysis/     Proyectos, ejecución del pipeline y lectura de resultados
 │   ├── auth/         Registro, sesión, Google OAuth y contraseñas
 │   └── contact/      Formulario de contacto
-├── config/           Conexión a base, correo, multer, Swagger y configuración global
+├── assets/           Logotipo incrustado en los correos
+├── config/           Conexión a base, correo, idiomas, multer, Swagger y configuración global
 ├── middlewares/      Validación de peticiones y autenticación de Swagger
 ├── models/           Tipos de dominio y mapeo de filas de la base
 ├── utils/            Correo, archivos, tokens y formato de respuestas
 └── index.ts          Arranque: valida configuración, base y correo antes de escuchar
 
-deploy/               Infraestructura de producción (compose y esquema SQL)
+deploy/               Infraestructura de producción (compose, esquema SQL y migraciones)
 R/                    Contenedor del motor R y pipeline ideamexCLI integrado
 tests/                Pruebas unitarias con Jest
 ```

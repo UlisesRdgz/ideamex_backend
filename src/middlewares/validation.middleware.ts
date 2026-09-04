@@ -15,6 +15,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
+import { normalizeLanguage, SUPPORTED_LANGUAGES } from '../config/i18n';
 import { sendErrorResponse } from '../utils/response';
 
 /**
@@ -72,6 +73,16 @@ export const validateRegistration = [
     .custom((value, { req }) => {
       if (value !== req.body.password) {
         throw new Error('Las contraseñas no coinciden');
+      }
+      return true;
+    }),
+  // Opcional: si el cliente no lo envía, el controlador deduce el idioma de la
+  // cabecera `Accept-Language`. Solo se rechaza un valor presente pero inválido.
+  body('language')
+    .optional()
+    .custom((value) => {
+      if (normalizeLanguage(value) === null) {
+        throw new Error(`Idioma no admitido. Valores válidos: ${SUPPORTED_LANGUAGES.join(', ')}`);
       }
       return true;
     }),

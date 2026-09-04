@@ -10,6 +10,7 @@
  */
 
 import { pool } from '../../config/db';
+import { DEFAULT_LANGUAGE, SupportedLanguage } from '../../config/i18n';
 import { User } from '../../models/User';
 
 /**
@@ -25,8 +26,8 @@ export const createUser = async (
 ): Promise<User> => {
   // Inserta usuario local o social según `auth_provider`.
   const query = `
-    INSERT INTO users (email, username, password, activation, token, token_expiration, password_request, google_id, auth_provider)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO users (email, username, password, activation, token, token_expiration, password_request, google_id, auth_provider, language)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   const conn = await pool.getConnection();
   let result: { insertId: number };
@@ -42,6 +43,7 @@ export const createUser = async (
       user.password_request,
       user.google_id,
       user.auth_provider,
+      user.language,
     ]);
   } finally {
     conn.release();
@@ -174,7 +176,12 @@ export const findOrCreateUser = async (params: {
   email: string;
   username: string;
   googleId: string;
+  language?: SupportedLanguage;
 }): Promise<User> => {
+  // Google no pide idioma en su consentimiento, así que se toma el resuelto en
+  // la petición y, si no llegó ninguno, el idioma por defecto de la aplicación.
+  const language = params.language ?? DEFAULT_LANGUAGE;
+
   const conn = await pool.getConnection();
   try {
     // Busca por email o `google_id` para enlazar identidad de forma segura.
@@ -212,9 +219,9 @@ export const findOrCreateUser = async (params: {
 
     // Alta automática de usuario social si no existía previamente.
     const result = await conn.query(
-      `INSERT INTO users (email, username, password, activation, auth_provider, google_id, password_request)
-       VALUES (?, ?, NULL, 1, 'google', ?, 0)`,
-      [params.email, params.username, params.googleId]
+      `INSERT INTO users (email, username, password, activation, auth_provider, google_id, password_request, language)
+       VALUES (?, ?, NULL, 1, 'google', ?, 0, ?)`,
+      [params.email, params.username, params.googleId, language]
     );
 
     return {
@@ -231,6 +238,7 @@ export const findOrCreateUser = async (params: {
       google_id: params.googleId,
       token_expiration: null,
       auth_provider: 'google',
+      language,
     };
   } finally {
     conn.release();
