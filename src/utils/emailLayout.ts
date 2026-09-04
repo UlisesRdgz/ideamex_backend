@@ -98,10 +98,16 @@ export const buildEmailShell = (params: {
     <tr>
       <td align="center" style="padding:32px 12px;">
 
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background-color:${COLORS.cardBackground};border:1px solid ${COLORS.border};border-radius:12px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background-color:${COLORS.cardBackground};border:1px solid ${COLORS.border};border-radius:12px;overflow:hidden;">
+
+          <!-- Filete de marca. Sobre blanco el logotipo conserva su contraste, cosa
+               que no ocurre cuando se coloca dentro de una barra azul completa. -->
+          <tr>
+            <td style="background-color:${COLORS.brand};height:6px;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
 
           <tr>
-            <td align="left" style="padding:36px 40px 0 40px;">
+            <td align="left" style="padding:32px 40px 0 40px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td style="padding-right:10px;" valign="middle">
