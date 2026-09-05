@@ -516,11 +516,64 @@ const parseTopGenesFromTopFile = (
 };
 
 /**
+ * Escapa los metacaracteres de una cadena para usarla dentro de una expresión regular.
+ */
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Cuenta los genes diferenciales a partir del archivo TOP de una comparación.
+ *
+ * R deja en ese archivo exactamente los genes que superan los dos umbrales
+ * configurados, de modo que contarlo entero es la vía directa y no requiere
+ * reaplicar los criterios. El sentido de la regulación se toma del signo del
+ * `logFC`.
+ *
+ * @returns Los conteos, o `null` si el archivo no puede interpretarse.
+ */
+export const countSignificantGenesFromTopFile = (
+  topFilePath: string
+): { upregulated: number; downregulated: number; significant: number } | null => {
+  const table = parseDelimitedTableFile(topFilePath);
+  if (!table) {
+    return null;
+  }
+
+  const logFCIndex = findHeaderColumnIndex(table.headers, [/logfc/, /^lfc$/]);
+  if (logFCIndex < 0) {
+    return null;
+  }
+
+  let upregulated = 0;
+  let downregulated = 0;
+
+  for (const row of table.rows) {
+    const logFC = parseNumericCell(row[logFCIndex]);
+    if (logFC === null) {
+      continue;
+    }
+
+    if (logFC >= 0) {
+      upregulated += 1;
+    } else {
+      downregulated += 1;
+    }
+  }
+
+  return { upregulated, downregulated, significant: upregulated + downregulated };
+};
+
+/**
  * Calcula conteos de regulación a partir de un archivo diferencial principal.
+ *
+ * Respaldo para cuando no existe archivo TOP, por ejemplo si la corrida se
+ * lanzó sin pedirlo. Aplica los dos umbrales del proyecto: quedarse solo con el
+ * de significancia contaría genes que R no considera diferenciales por no
+ * alcanzar el cambio mínimo de expresión.
  */
 const parseDifferentialCountsFromMainFile = (
   mainFilePath: string,
-  significanceThreshold: number
+  significanceThreshold: number,
+  foldChangeThreshold: number
 ): { upregulated: number; downregulated: number; significant: number } => {
   const table = parseDelimitedTableFile(mainFilePath);
   if (!table) {
@@ -549,7 +602,7 @@ const parseDifferentialCountsFromMainFile = (
     const isSignificant =
       significanceValue === null ? true : significanceValue <= significanceThreshold;
 
-    if (!isSignificant) {
+    if (!isSignificant || Math.abs(logFC) < foldChangeThreshold) {
       continue;
     }
 
@@ -2293,6 +2346,13 @@ export const buildStructuredProjectResultsPayload = (
     return Number.isFinite(parsed) && parsed > 0 && parsed < 1 ? parsed : 0.05;
   })();
 
+  // Umbral de cambio de expresión. Solo se usa en el respaldo que lee el archivo
+  // principal: el TOP ya viene filtrado por ambos criterios.
+  const foldChangeThreshold = (() => {
+    const parsed = Number(project.parameters?.logFC || '');
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1.5;
+  })();
+
   const differentialExpression: DifferentialExpression[] = [];
   for (const methodConfig of STRUCTURED_DE_METHODS) {
     const methodEnabled = (() => {
@@ -2334,27 +2394,41 @@ export const buildStructuredProjectResultsPayload = (
       const comparisonPath = path.join(methodFolderPath, comparisonName);
       const topFileName = findFirstFileInDirectoryByPattern(comparisonPath, /(_top|top)\.txt$/i);
       const plotFileNames = findAllComparisonPlotFileNames(comparisonPath);
+      // El archivo principal es el que lleva el nombre de la comparación a
+      // secas. Los demás `.txt` de la carpeta son derivados —abundancias,
+      // intersección, logFC, valores p— y varios carecen de columna de
+      // significancia, de modo que aceptarlos aquí daría conteos en cero.
       const mainFileName = findFirstFileInDirectoryByPattern(
         comparisonPath,
-        /^.*\.txt$/i
+        new RegExp(`^${escapeRegExp(comparisonName)}\\.txt$`, 'i')
       );
 
+      // Lista de vista previa para la interfaz, acotada a propósito.
       const topGenes = topFileName
         ? parseTopGenesFromTopFile(path.join(comparisonPath, topFileName))
         : [];
 
-      const upFromTop = topGenes.filter((row) => row.logFC >= 0).length;
-      const downFromTop = topGenes.filter((row) => row.logFC < 0).length;
-      const mainCounts = mainFileName
-        ? parseDifferentialCountsFromMainFile(
-            path.join(comparisonPath, mainFileName),
-            significanceThreshold
-          )
-        : { upregulated: 0, downregulated: 0, significant: 0 };
+      // Los conteos se calculan aparte, sobre el archivo completo. El TOP que
+      // genera R ya contiene exactamente los genes que superan los dos umbrales
+      // —significancia y logFC—, así que contarlo entero da la cifra correcta.
+      // Derivarlos de `topGenes` daría siempre el tamaño de la vista previa.
+      const topCounts = topFileName
+        ? countSignificantGenesFromTopFile(path.join(comparisonPath, topFileName))
+        : null;
 
-      const upregulated = mainCounts.upregulated > 0 ? mainCounts.upregulated : upFromTop;
-      const downregulated = mainCounts.downregulated > 0 ? mainCounts.downregulated : downFromTop;
-      const significant = mainCounts.significant > 0 ? mainCounts.significant : topGenes.length;
+      const mainCounts =
+        topCounts ??
+        (mainFileName
+          ? parseDifferentialCountsFromMainFile(
+              path.join(comparisonPath, mainFileName),
+              significanceThreshold,
+              foldChangeThreshold
+            )
+          : { upregulated: 0, downregulated: 0, significant: 0 });
+
+      const upregulated = mainCounts.upregulated;
+      const downregulated = mainCounts.downregulated;
+      const significant = mainCounts.significant;
       const plots = Array.from(
         new Map(
           plotFileNames.map((plotFileName) => {
