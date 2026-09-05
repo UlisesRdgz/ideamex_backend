@@ -276,6 +276,68 @@ export const lockProjectForRun = async (
 };
 
 /**
+ * Guarda el avance parcial de la configuración de un proyecto.
+ *
+ * A diferencia de `lockProjectForRun`, acepta cualquier subconjunto de los
+ * cuatro bloques y deja intactos los que no se envían: sirve para conservar un
+ * formulario a medio llenar. Tampoco cambia el estatus, que debe seguir en
+ * `PENDING` hasta que el usuario decida ejecutar.
+ *
+ * La condición `status = 'PENDING'` en el `WHERE` es la que hace cumplir la
+ * inmutabilidad: sobre un proyecto ya analizado la sentencia no afecta filas.
+ *
+ * @async
+ * @function saveProjectDraftConfig
+ * @param id_project - ID del proyecto.
+ * @param id_user - ID del propietario.
+ * @param config - Bloques de configuración a guardar; los ausentes no se tocan.
+ * @returns `true` si se actualizó la fila.
+ */
+export const saveProjectDraftConfig = async (
+  id_project: number,
+  id_user: number,
+  config: Partial<ProjectRunConfigPayload>
+): Promise<boolean> => {
+  const asignaciones: string[] = [];
+  const valores: unknown[] = [];
+
+  const columnas: Array<[keyof ProjectRunConfigPayload, string]> = [
+    ['samples', 'samples_json'],
+    ['selectedMethods', 'selected_methods_json'],
+    ['comparisons', 'comparisons_json'],
+    ['parameters', 'parameters_json'],
+  ];
+
+  for (const [campo, columna] of columnas) {
+    if (config[campo] !== undefined) {
+      asignaciones.push(`${columna} = ?`);
+      valores.push(JSON.stringify(config[campo]));
+    }
+  }
+
+  if (asignaciones.length === 0) {
+    return false;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    const result = await conn.query(
+      `
+      UPDATE projects
+      SET ${asignaciones.join(', ')},
+          updated_at = NOW()
+      WHERE id_project = ? AND user_id = ? AND status = 'PENDING'
+      `,
+      [...valores, id_project, id_user]
+    );
+
+    return result.affectedRows === 1;
+  } finally {
+    conn.release();
+  }
+};
+
+/**
  * Marca un proyecto como análisis exitoso.
  */
 export const markProjectRunCompleted = async (

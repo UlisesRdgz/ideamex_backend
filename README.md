@@ -152,6 +152,7 @@ Todas las rutas cuelgan de la raíz porque en producción nginx elimina el prefi
 | Método | Ruta | Descripción |
 | --- | --- | --- |
 | `POST` | `/analysis/upload` | Sube la tabla de conteos y crea el proyecto. |
+| `PATCH` | `/analysis/project/:id/config` | Guarda el avance parcial de la configuración. Solo mientras el proyecto está pendiente. |
 | `GET` | `/analysis/user-projects` | Lista los proyectos del usuario autenticado. |
 | `POST` | `/analysis/project/:projectId/run` | Lanza el pipeline de R. |
 | `GET` | `/analysis/project/:projectId/results` | Estado y resumen de la corrida. |
@@ -175,7 +176,7 @@ src/
 │   ├── auth/         Registro, sesión, Google OAuth y contraseñas
 │   └── contact/      Formulario de contacto
 ├── assets/           Logotipo incrustado en los correos
-├── config/           Conexión a base, correo, idiomas, multer, Swagger y configuración global
+├── config/           Conexión a base, correo, multer, Swagger y configuración global
 ├── middlewares/      Validación de peticiones y autenticación de Swagger
 ├── models/           Tipos de dominio y mapeo de filas de la base
 ├── utils/            Correo, archivos, tokens y formato de respuestas

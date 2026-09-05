@@ -11,6 +11,7 @@ import {
   handleDeleteProject,
   handleGetUserProjects,
   handleProjectUpload,
+  handleSaveProjectConfig,
 } from '../controllers/analysis.projects.controller';
 import { uploadProject } from '../../../config/multer';
 import { requireUser } from '../../auth/auth.middleware';
@@ -18,6 +19,7 @@ import {
   validateDeleteProjectQuery,
   validateProjectIdParam,
   validateRequest,
+  validateSaveProjectConfig,
 } from '../../../middlewares/validation.middleware';
 
 const projectsRouter = Router();
@@ -27,6 +29,14 @@ projectsRouter.post(
   requireUser,
   uploadProject.single('file'),
   handleProjectUpload
+);
+
+projectsRouter.patch(
+  '/project/:projectId/config',
+  requireUser,
+  validateSaveProjectConfig,
+  validateRequest,
+  handleSaveProjectConfig
 );
 
 projectsRouter.get(

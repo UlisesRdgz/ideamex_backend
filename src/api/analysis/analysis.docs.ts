@@ -439,6 +439,63 @@
  *       500:
  *         $ref: '#/components/responses/InternalServerError'
  *
+ * /analysis/project/{projectId}/config:
+ *   patch:
+ *     tags: [Analysis]
+ *     operationId: saveProjectConfig
+ *     summary: Guarda el avance parcial de la configuracion del proyecto
+ *     description: >
+ *       Conserva en el servidor un formulario de configuracion a medio llenar.
+ *       Acepta cualquier subconjunto de los cuatro bloques y deja intactos los
+ *       que no se envian. No altera el estatus del proyecto, que permanece
+ *       "Incompleto" hasta que se ejecute el analisis. Solo se admite mientras
+ *       el proyecto esta pendiente: una vez ejecutado, la configuracion es
+ *       inmutable.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             minProperties: 1
+ *             properties:
+ *               samples:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *               selectedMethods:
+ *                 type: object
+ *               comparisons:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *               parameters:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: Configuracion guardada.
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         description: El proyecto ya no esta pendiente y su configuracion es inmutable.
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+
+/**
+ * @swagger
  * /analysis/user-projects:
  *   get:
  *     tags: [Analysis]
