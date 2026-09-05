@@ -271,7 +271,7 @@ export const validateRunAnalysis = [
 
         const isSelected = row.isSelected;
         if (typeof isSelected !== 'boolean') {
-          throw new Error('isSelected debe ser booleano');
+          throw new Error('isSelected must be a boolean');
         }
       }
 
@@ -286,7 +286,7 @@ export const validateRunAnalysis = [
       }
 
       if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        throw new Error('selectedMethods debe ser un objeto');
+        throw new Error('selectedMethods must be an object');
       }
 
       const allowedKeys = [
@@ -323,11 +323,11 @@ export const validateRunAnalysis = [
   body('parameters')
     .custom((value) => {
       if (value === undefined) {
-        throw new Error('parameters es obligatorio');
+        throw new Error('parameters is required');
       }
 
       if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        throw new Error('parameters debe ser un objeto');
+        throw new Error('parameters must be an object');
       }
 
       const params = value as Record<string, unknown>;
@@ -373,11 +373,11 @@ export const validateRunAnalysis = [
   body('comparisons')
     .custom((value) => {
       if (value === undefined) {
-        throw new Error('comparisons es obligatorio');
+        throw new Error('comparisons is required');
       }
 
       if (!Array.isArray(value)) {
-        throw new Error('comparisons debe ser un arreglo');
+        throw new Error('comparisons must be an array');
       }
 
       for (const comparison of value) {
@@ -388,23 +388,23 @@ export const validateRunAnalysis = [
         const row = comparison as Record<string, unknown>;
         // Compatibilidad: se acepta `isCustom` (ProjectRequest) o `selected` (Project).
         if (typeof row.base !== 'string' || row.base.trim().length === 0) {
-          throw new Error('comparison.base es obligatorio');
+          throw new Error('comparison.base is required');
         }
         if (typeof row.target !== 'string' || row.target.trim().length === 0) {
-          throw new Error('comparison.target es obligatorio');
+          throw new Error('comparison.target is required');
         }
 
         if (row.isCustom === undefined && row.selected === undefined) {
           // Soporta ambos contratos de frontend sin perder obligatoriedad lógica.
-          throw new Error('comparison.isCustom o comparison.selected es obligatorio');
+          throw new Error('either comparison.isCustom or comparison.selected is required');
         }
 
         if (row.isCustom !== undefined && typeof row.isCustom !== 'boolean') {
-          throw new Error('comparison.isCustom debe ser booleano');
+          throw new Error('comparison.isCustom must be a boolean');
         }
 
         if (row.selected !== undefined && typeof row.selected !== 'boolean') {
-          throw new Error('comparison.selected debe ser booleano');
+          throw new Error('comparison.selected must be a boolean');
         }
       }
 
@@ -433,7 +433,7 @@ export const validateRunAnalysis = [
     // Compatibilidad legacy: acepta vector batch en raíz del body.
     .optional({ nullable: true })
     .isString()
-    .withMessage('batch debe ser una cadena')
+    .withMessage('batch must be a string')
     .matches(/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?)*$/)
     .withMessage('batch must be a comma-separated numeric list'),
 
@@ -441,22 +441,22 @@ export const validateRunAnalysis = [
     // Compatibilidad legacy: se puede enviar en raíz aunque normalmente venga por `parameters`.
     .optional()
     .isBoolean()
-    .withMessage('generateZip debe ser booleano'),
+    .withMessage('generateZip must be a boolean'),
 
   body('top')
     // Compatibilidad legacy: se puede enviar en raíz aunque normalmente venga por `parameters`.
     .optional()
     .isBoolean()
-    .withMessage('top debe ser booleano'),
+    .withMessage('top must be a boolean'),
 
   body('samples')
     .custom((value) => {
       if (value === undefined) {
-        throw new Error('samples es obligatorio');
+        throw new Error('samples is required');
       }
 
       if (!Array.isArray(value)) {
-        throw new Error('samples debe ser un arreglo');
+        throw new Error('samples must be an array');
       }
 
       for (const sample of value) {
@@ -466,7 +466,7 @@ export const validateRunAnalysis = [
 
         const row = sample as Record<string, unknown>;
         if (typeof row.name !== 'string' || row.name.trim().length === 0) {
-          throw new Error('sample.name es obligatorio');
+          throw new Error('sample.name is required');
         }
 
         if (
@@ -477,7 +477,7 @@ export const validateRunAnalysis = [
         }
 
         if (row.batch === undefined) {
-          throw new Error('sample.batch es obligatorio, usa null si no aplica');
+          throw new Error('sample.batch is required; use null when not applicable');
         }
 
         if (
@@ -485,7 +485,7 @@ export const validateRunAnalysis = [
           typeof row.batch !== 'string' &&
           typeof row.batch !== 'number'
         ) {
-          throw new Error('sample.batch debe ser string, number o null');
+          throw new Error('sample.batch must be a string, a number or null');
         }
 
         if (typeof row.batch === 'string' && row.batch.trim().length === 0) {
@@ -514,13 +514,13 @@ export const validateDeleteProjectQuery = [
     .optional()
     .custom((value) => {
       if (typeof value !== 'string' && typeof value !== 'boolean') {
-        throw new Error('force debe ser booleano');
+        throw new Error('force must be a boolean');
       }
 
       const normalized = String(value).trim().toLowerCase();
       const allowed = ['true', 'false', '1', '0', 'yes', 'no'];
       if (!allowed.includes(normalized)) {
-        throw new Error('force debe ser true/false/1/0/yes/no');
+        throw new Error('force must be true/false/1/0/yes/no');
       }
       return true;
     }),
@@ -532,21 +532,21 @@ export const validateDeleteProjectQuery = [
 export const validateResultFileQuery = [
   query('name')
     .isString()
-    .withMessage('name debe ser una cadena')
+    .withMessage('name must be a string')
     .notEmpty()
-    .withMessage('name es obligatorio'),
+    .withMessage('name is required'),
 
   query('download')
     .optional()
     .custom((value) => {
       if (typeof value !== 'string') {
-        throw new Error('download debe ser string booleano');
+        throw new Error('download must be a boolean string');
       }
 
       const normalized = value.trim().toLowerCase();
       const allowed = ['true', 'false', '1', '0', 'yes', 'no'];
       if (!allowed.includes(normalized)) {
-        throw new Error('download debe ser true/false/1/0/yes/no');
+        throw new Error('download must be true/false/1/0/yes/no');
       }
       return true;
     }),
