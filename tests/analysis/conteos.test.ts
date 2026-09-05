@@ -1,9 +1,8 @@
 /**
  * @file Pruebas del conteo de genes diferenciales que reporta la API.
- *
- * Es la cifra que el investigador lee en pantalla y la que resume el resultado
- * del analisis. Un fallo aqui no rompe nada visiblemente: entrega un numero
- * plausible pero equivocado, que es la clase de error mas dificil de notar.
+ * Un fallo aqui no rompe nada visiblemente: da un numero plausible y falso. Los
+ * archivos reproducen la convencion del pipeline, con el signo invertido
+ * respecto al nombre del contraste; alinearlos ocultaba la inversion.
  */
 
 import fs from 'fs';
@@ -21,14 +20,17 @@ afterAll(() => {
   fs.rmSync(carpeta, { recursive: true, force: true });
 });
 
-/** Genera un archivo TOP con la cantidad pedida de genes por sentido. */
+const ARRIBA = 'Up_treated_Down_untreated';
+const ABAJO = 'Down_treated_Up_untreated';
+
+/** Genera un archivo TOP con el signo invertido, tal como lo escribe R. */
 const archivoTop = (nombre: string, sobre: number, sub: number): string => {
-  const lineas = ['ID\tlogFC\tlogCPM\tPValue\tFDR'];
+  const lineas = ['ID\tlogFC\tlogCPM\tPValue\tFDR\tExpression'];
   for (let i = 0; i < sobre; i += 1) {
-    lineas.push(`GEN_UP_${i}\t${(2 + i / 100).toFixed(4)}\t5.1\t1e-10\t1e-8`);
+    lineas.push(`GEN_UP_${i}\t${(-2 - i / 100).toFixed(4)}\t5.1\t1e-10\t1e-8\t${ARRIBA}`);
   }
   for (let i = 0; i < sub; i += 1) {
-    lineas.push(`GEN_DOWN_${i}\t${(-2 - i / 100).toFixed(4)}\t5.1\t1e-10\t1e-8`);
+    lineas.push(`GEN_DOWN_${i}\t${(2 + i / 100).toFixed(4)}\t5.1\t1e-10\t1e-8\t${ABAJO}`);
   }
   const ruta = path.join(carpeta, nombre);
   fs.writeFileSync(ruta, lineas.join('\n'));
@@ -47,10 +49,29 @@ describe('countSignificantGenesFromTopFile', () => {
     });
   });
 
-  it('separa por el signo del logFC', () => {
+  it('separa por la columna Expression, no por el signo del logFC', () => {
+    // La comprobacion que faltaba: por el signo saldrian intercambiados.
     const ruta = archivoTop('signos.txt', 3, 7);
-    const r = countSignificantGenesFromTopFile(ruta);
-    expect(r).toEqual({ upregulated: 3, downregulated: 7, significant: 10 });
+    expect(countSignificantGenesFromTopFile(ruta)).toEqual({
+      upregulated: 3,
+      downregulated: 7,
+      significant: 10,
+    });
+  });
+
+  it('no se deja llevar por un logFC que contradice a Expression', () => {
+    const ruta = path.join(carpeta, 'contradictorio.txt');
+    fs.writeFileSync(
+      ruta,
+      `ID\tlogFC\tFDR\tExpression\n` +
+        `GEN_A\t4.61\t1e-8\t${ABAJO}\n` +
+        `GEN_B\t-2.90\t1e-8\t${ARRIBA}\n`
+    );
+    expect(countSignificantGenesFromTopFile(ruta)).toEqual({
+      upregulated: 1,
+      downregulated: 1,
+      significant: 2,
+    });
   });
 
   it('cuenta correctamente cuando todos van en el mismo sentido', () => {
@@ -62,6 +83,43 @@ describe('countSignificantGenesFromTopFile', () => {
     });
   });
 
+  it('descarta los renglones que Expression marca como no diferenciales', () => {
+    const ruta = path.join(carpeta, 'nonde.txt');
+    fs.writeFileSync(
+      ruta,
+      `ID\tlogFC\tFDR\tExpression\n` +
+        `GEN_A\t-2.5\t1e-8\t${ARRIBA}\n` +
+        `GEN_B\t0.1\t0.9\tNonDE\n`
+    );
+    expect(countSignificantGenesFromTopFile(ruta)).toEqual({
+      upregulated: 1,
+      downregulated: 0,
+      significant: 1,
+    });
+  });
+
+  it('devuelve null si el archivo no tiene columna logFC ni Expression', () => {
+    // Es el caso del archivo de abundancias, que el codigo llegaba a elegir por
+    // orden alfabetico creyendolo el archivo principal.
+    const ruta = path.join(carpeta, 'abundancias.txt');
+    fs.writeFileSync(ruta, 'ID\ttreated_1\tuntreated_1\nGEN_A\t10\t20\n');
+    expect(countSignificantGenesFromTopFile(ruta)).toBeNull();
+  });
+
+  it('devuelve null si el archivo no existe', () => {
+    expect(countSignificantGenesFromTopFile(path.join(carpeta, 'ausente.txt'))).toBeNull();
+  });
+
+  it('devuelve null si solo hay encabezado', () => {
+    const ruta = path.join(carpeta, 'vacio.txt');
+    fs.writeFileSync(ruta, 'ID\tlogFC\tFDR\tExpression\n');
+    expect(countSignificantGenesFromTopFile(ruta)).toBeNull();
+  });
+});
+
+describe('respaldo por signo cuando falta la columna Expression', () => {
+  // El pipeline siempre la escribe; esto cubre solo archivos ajenos a el, donde
+  // no hay forma de conocer cual es la condicion basal.
   it('trata el cero como sobreexpresado, sin descartarlo', () => {
     const ruta = path.join(carpeta, 'cero.txt');
     fs.writeFileSync(ruta, 'ID\tlogFC\tFDR\nGEN_A\t0\t1e-8\nGEN_B\t-1.9\t1e-8\n');
@@ -81,24 +139,6 @@ describe('countSignificantGenesFromTopFile', () => {
       significant: 2,
     });
   });
-
-  it('devuelve null si el archivo no tiene columna logFC', () => {
-    // Es el caso del archivo de abundancias, que el codigo llegaba a elegir por
-    // orden alfabetico creyendolo el archivo principal.
-    const ruta = path.join(carpeta, 'abundancias.txt');
-    fs.writeFileSync(ruta, 'ID\ttreated_1\tuntreated_1\nGEN_A\t10\t20\n');
-    expect(countSignificantGenesFromTopFile(ruta)).toBeNull();
-  });
-
-  it('devuelve null si el archivo no existe', () => {
-    expect(countSignificantGenesFromTopFile(path.join(carpeta, 'ausente.txt'))).toBeNull();
-  });
-
-  it('devuelve null si solo hay encabezado', () => {
-    const ruta = path.join(carpeta, 'vacio.txt');
-    fs.writeFileSync(ruta, 'ID\tlogFC\tFDR\n');
-    expect(countSignificantGenesFromTopFile(ruta)).toBeNull();
-  });
 });
 
 describe('nombres de columna por metodo', () => {
@@ -110,7 +150,10 @@ describe('nombres de columna por metodo', () => {
     ['DESeq2', 'log2FoldChange'],
   ])('reconoce la columna de %s (%s)', (_metodo, columna) => {
     const ruta = path.join(carpeta, `col-${columna}.txt`);
-    fs.writeFileSync(ruta, `ID\t${columna}\tFDR\nGEN_A\t2.5\t1e-8\nGEN_B\t-3.1\t1e-8\n`);
+    fs.writeFileSync(
+      ruta,
+      `ID\t${columna}\tFDR\tExpression\nGEN_A\t-2.5\t1e-8\t${ARRIBA}\nGEN_B\t3.1\t1e-8\t${ABAJO}\n`
+    );
     expect(countSignificantGenesFromTopFile(ruta)).toEqual({
       upregulated: 1,
       downregulated: 1,

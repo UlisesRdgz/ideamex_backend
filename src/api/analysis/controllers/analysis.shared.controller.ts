@@ -561,6 +561,47 @@ const readRunWarnings = (resultDir: string): string[] => {
 const FOLD_CHANGE_COLUMN_PATTERNS = [/^logfc$/, /^lfc$/, /^log2fc$/, /^log2foldchange$/, /logfc/, /log2foldchange/];
 
 /**
+ * Columna donde el pipeline deja resuelto el sentido de la regulación.
+ * La rellena `getDEGenes`, referida a la primera condición del contraste, que
+ * es la que la API reporta como sobreexpresada.
+ */
+const EXPRESSION_COLUMN_PATTERNS = [/^expression$/, /^regulation$/];
+
+/**
+ * Deduce el sentido de la regulación leyendo `Expression`, no el signo.
+ * El pipeline toma como basal la primera condición, así que en `AvsB` un valor
+ * positivo es alto en `B`: por el signo salían los cuatro métodos invertidos.
+ *
+ * @param row - Renglón de la tabla.
+ * @param expressionIndex - Columna `Expression`, negativo si no existe.
+ * @param foldChangeIndex - Cambio de expresión, respaldo del anterior.
+ * @returns `'up'`, `'down'`, o `null` si el renglón no es diferencial.
+ */
+const resolveRegulationDirection = (
+  row: string[],
+  expressionIndex: number,
+  foldChangeIndex: number
+): 'up' | 'down' | null => {
+  if (expressionIndex >= 0) {
+    const label = (row[expressionIndex] ?? '').trim().toLowerCase();
+    if (label.startsWith('up')) {
+      return 'up';
+    }
+    if (label.startsWith('down')) {
+      return 'down';
+    }
+    return null;
+  }
+
+  const foldChange = parseNumericCell(foldChangeIndex >= 0 ? row[foldChangeIndex] : undefined);
+  if (foldChange === null) {
+    return null;
+  }
+
+  return foldChange >= 0 ? 'up' : 'down';
+};
+
+/**
  * Escapa los metacaracteres de una cadena para usarla dentro de una expresión regular.
  */
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -568,10 +609,8 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 /**
  * Cuenta los genes diferenciales a partir del archivo TOP de una comparación.
  *
- * R deja en ese archivo exactamente los genes que superan los dos umbrales
- * configurados, de modo que contarlo entero es la vía directa y no requiere
- * reaplicar los criterios. El sentido de la regulación se toma del signo del
- * `logFC`.
+ * R deja ahí los genes que superan los dos umbrales, así que contarlo entero
+ * basta. El sentido sale de `Expression`, ya resuelta por el pipeline.
  *
  * @returns Los conteos, o `null` si el archivo no puede interpretarse.
  */
@@ -584,7 +623,8 @@ export const countSignificantGenesFromTopFile = (
   }
 
   const logFCIndex = findHeaderColumnIndex(table.headers, FOLD_CHANGE_COLUMN_PATTERNS);
-  if (logFCIndex < 0) {
+  const expressionIndex = findHeaderColumnIndex(table.headers, EXPRESSION_COLUMN_PATTERNS);
+  if (logFCIndex < 0 && expressionIndex < 0) {
     return null;
   }
 
@@ -592,12 +632,12 @@ export const countSignificantGenesFromTopFile = (
   let downregulated = 0;
 
   for (const row of table.rows) {
-    const logFC = parseNumericCell(row[logFCIndex]);
-    if (logFC === null) {
+    const direction = resolveRegulationDirection(row, expressionIndex, logFCIndex);
+    if (direction === null) {
       continue;
     }
 
-    if (logFC >= 0) {
+    if (direction === 'up') {
       upregulated += 1;
     } else {
       downregulated += 1;
@@ -608,12 +648,9 @@ export const countSignificantGenesFromTopFile = (
 };
 
 /**
- * Calcula conteos de regulación a partir de un archivo diferencial principal.
- *
- * Respaldo para cuando no existe archivo TOP, por ejemplo si la corrida se
- * lanzó sin pedirlo. Aplica los dos umbrales del proyecto: quedarse solo con el
- * de significancia contaría genes que R no considera diferenciales por no
- * alcanzar el cambio mínimo de expresión.
+ * Calcula conteos de regulación a partir del archivo diferencial principal.
+ * Respaldo para cuando no hay archivo TOP. Aplica los dos umbrales: solo con el
+ * de significancia contaría genes que R no considera diferenciales.
  */
 const parseDifferentialCountsFromMainFile = (
   mainFilePath: string,
@@ -626,6 +663,7 @@ const parseDifferentialCountsFromMainFile = (
   }
 
   const logFCIndex = findHeaderColumnIndex(table.headers, FOLD_CHANGE_COLUMN_PATTERNS);
+  const expressionIndex = findHeaderColumnIndex(table.headers, EXPRESSION_COLUMN_PATTERNS);
   const significanceIndex = findHeaderColumnIndex(table.headers, [/fdr/, /padj/, /pvalue/, /p\.value/]);
 
   if (logFCIndex < 0) {
@@ -651,8 +689,15 @@ const parseDifferentialCountsFromMainFile = (
       continue;
     }
 
+    // Si hay columna `Expression`, su veredicto manda: R la rellenó con estos
+    // mismos umbrales, así que un `NonDE` que pase el filtro no se cuenta.
+    const direction = resolveRegulationDirection(row, expressionIndex, logFCIndex);
+    if (direction === null) {
+      continue;
+    }
+
     significant += 1;
-    if (logFC >= 0) {
+    if (direction === 'up') {
       upregulated += 1;
     } else {
       downregulated += 1;
