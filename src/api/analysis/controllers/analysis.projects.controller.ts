@@ -51,12 +51,29 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
 
     const user = req.user;
 
+    // Multer ya escribió el archivo en tránsito antes de llegar aquí, de modo
+    // que toda salida por error debe retirarlo. Se define antes que cualquier
+    // comprobación para que ninguna rama pueda olvidarlo: la especificación
+    // exige que una carga rechazada no quede almacenada en el servidor.
+    const descartarSubida = (motivo: string): void => {
+      const ruta = req.file?.path;
+      try {
+        if (ruta && fs.existsSync(ruta)) {
+          fs.rmSync(ruta, { force: true });
+        }
+      } catch (cleanupError) {
+        console.error(`[FS] Error cleaning upload after ${motivo}:`, cleanupError);
+      }
+    };
+
     if (!user || typeof user.email !== 'string' || typeof user.id_user !== 'number') {
+      descartarSubida('invalid user');
       sendErrorResponse(res, 'Missing or invalid user information from token', null, 400);
       return;
     }
 
     if (!title) {
+      descartarSubida('missing title');
       sendErrorResponse(res, 'Missing or invalid title', null, 400);
       return;
     }
@@ -65,19 +82,6 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
       sendErrorResponse(res, 'No file uploaded', null, 400);
       return;
     }
-
-    // El archivo aún está en la carpeta de tránsito. Cualquier salida por error
-    // a partir de aquí debe retirarlo: la especificación exige que una tabla
-    // rechazada no quede almacenada en el servidor.
-    const descartarSubida = (motivo: string): void => {
-      try {
-        if (file.path && fs.existsSync(file.path)) {
-          fs.rmSync(file.path, { force: true });
-        }
-      } catch (cleanupError) {
-        console.error(`[FS] Error cleaning upload after ${motivo}:`, cleanupError);
-      }
-    };
 
     // Verificación técnica del contenido. R no detecta estos errores: los
     // absorbe renombrando columnas o desalineando renglones, de modo que el
@@ -169,14 +173,18 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
   } catch (error) {
     console.error('Error in handleProjectUpload:', error);
 
-    if (isDuplicateEntryError(error)) {
+    // Un fallo inesperado tampoco debe dejar el archivo en tránsito. Si ya se
+    // trasladó a la carpeta del proyecto, la ruta de tránsito ya no existe y
+    // esto no hace nada.
+    try {
       if (req.file?.path && fs.existsSync(req.file.path)) {
-        try {
-          fs.rmSync(req.file.path, { force: true });
-        } catch (cleanupError) {
-          console.error('[FS] Error cleaning file after duplicate key:', cleanupError);
-        }
+        fs.rmSync(req.file.path, { force: true });
       }
+    } catch (cleanupError) {
+      console.error('[FS] Error cleaning upload after failure:', cleanupError);
+    }
+
+    if (isDuplicateEntryError(error)) {
       sendErrorResponse(res, 'A project with the same title already exists', null, 409);
       return;
     }
