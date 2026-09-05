@@ -174,66 +174,6 @@ export const validateContactForm = [
 ];
 
 /**
- * Reglas de validación para guardar el avance parcial de la configuración.
- *
- * Deliberadamente laxas comparadas con `validateRunAnalysis`: un borrador está
- * incompleto por definición, así que todos los bloques son opcionales y solo se
- * comprueba la forma de los que llegan, lo justo para no almacenar datos que
- * después no se puedan leer. La verificación exhaustiva ocurre al ejecutar.
- */
-export const validateSaveProjectConfig = [
-  param('projectId')
-    .isInt({ min: 1 })
-    .withMessage('projectId must be a positive integer'),
-
-  body('samples')
-    .optional()
-    .custom((value) => {
-      if (!Array.isArray(value)) {
-        throw new Error('samples must be an array');
-      }
-      for (const sample of value) {
-        if (!sample || typeof sample !== 'object' || Array.isArray(sample)) {
-          throw new Error('Each sample must be an object');
-        }
-      }
-      return true;
-    }),
-
-  body('comparisons')
-    .optional()
-    .custom((value) => {
-      if (!Array.isArray(value)) {
-        throw new Error('comparisons must be an array');
-      }
-      for (const comparison of value) {
-        if (!comparison || typeof comparison !== 'object' || Array.isArray(comparison)) {
-          throw new Error('Each comparison must be an object');
-        }
-      }
-      return true;
-    }),
-
-  body('selectedMethods')
-    .optional()
-    .custom((value) => {
-      if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        throw new Error('selectedMethods must be an object');
-      }
-      return true;
-    }),
-
-  body('parameters')
-    .optional()
-    .custom((value) => {
-      if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        throw new Error('parameters must be an object');
-      }
-      return true;
-    }),
-];
-
-/**
  * Reglas de validación para ejecutar el análisis de un proyecto.
  * El conjunto más extenso, porque el body trae la configuración completa del
  * experimento. Acepta `methods` (formato anterior) o `selectedMethods`.

@@ -14,13 +14,11 @@ import { validateCountTableFile } from '../../../utils/countTable';
 import { sendErrorResponse, sendSuccessResponse } from '../../../utils/response';
 import {
   ProjectJsonPayload,
-  ProjectRunConfigPayload,
   createProject,
   deleteProjectById,
   getProjectById,
   getProjectsByUser,
   projectExists,
-  saveProjectDraftConfig,
 } from '../analysis.service';
 import { UploadProjectPayloadLike } from '../analysis.types';
 import {
@@ -184,100 +182,6 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
     }
 
     sendErrorResponse(res, 'Server error during project upload', null, 500);
-  }
-};
-
-/**
- * Guarda el avance parcial de los formularios de configuración.
- *
- * Permite conservar en el servidor un formulario a medio llenar, en lugar de
- * dejarlo únicamente en el navegador, donde no sobrevive a un cambio de equipo.
- * Acepta cualquier subconjunto de los cuatro bloques y no altera el estatus del
- * proyecto, que permanece "Incompleto" hasta que el usuario ejecute el análisis.
- *
- * La validación aquí solo comprueba la forma de lo que llega: un borrador es
- * incompleto por definición. La verificación exhaustiva sigue haciéndose al
- * iniciar la corrida, que es cuando la configuración debe estar entera.
- */
-export const handleSaveProjectConfig = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = req.user;
-    if (!user || typeof user.id_user !== 'number') {
-      sendErrorResponse(res, 'Missing or invalid user information from token', null, 400);
-      return;
-    }
-
-    const projectId = Number(req.params.projectId);
-    const project = await getProjectById(projectId, user.id_user);
-    if (!project) {
-      sendErrorResponse(res, 'Project not found or access denied', null, 404);
-      return;
-    }
-
-    // Un proyecto que ya se ejecutó no admite cambios: alterar su configuración
-    // dejaría los resultados sin correspondencia con los parámetros mostrados.
-    if (project.status !== 'PENDING') {
-      sendErrorResponse(
-        res,
-        'Project configuration can only be modified while the project is pending',
-        null,
-        409
-      );
-      return;
-    }
-
-    const payload = (req.body || {}) as Record<string, unknown>;
-    const config: Partial<ProjectRunConfigPayload> = {};
-
-    if (payload.samples !== undefined) {
-      config.samples = payload.samples as unknown[];
-    }
-    if (payload.selectedMethods !== undefined) {
-      config.selectedMethods = payload.selectedMethods as Record<string, unknown>;
-    }
-    if (payload.comparisons !== undefined) {
-      config.comparisons = payload.comparisons as unknown[];
-    }
-    if (payload.parameters !== undefined) {
-      config.parameters = payload.parameters as Record<string, unknown>;
-    }
-
-    if (Object.keys(config).length === 0) {
-      sendErrorResponse(
-        res,
-        'At least one of samples, selectedMethods, comparisons or parameters is required',
-        null,
-        400
-      );
-      return;
-    }
-
-    const saved = await saveProjectDraftConfig(projectId, user.id_user, config);
-    if (!saved) {
-      // La condición de estatus vive en el `WHERE`, así que llegar aquí significa
-      // que el proyecto dejó de estar pendiente entre la lectura y la escritura.
-      sendErrorResponse(
-        res,
-        'Project configuration can only be modified while the project is pending',
-        null,
-        409
-      );
-      return;
-    }
-
-    const updated = await getProjectById(projectId, user.id_user);
-
-    sendSuccessResponse(res, 'Project configuration saved', {
-      id: projectId,
-      status: updated?.status ?? project.status,
-      samples: updated?.samples ?? null,
-      selectedMethods: updated?.selectedMethods ?? null,
-      comparisons: updated?.comparisons ?? null,
-      parameters: updated?.parameters ?? null,
-    });
-  } catch (error) {
-    console.error('Error in handleSaveProjectConfig:', error);
-    sendErrorResponse(res, 'Server error while saving project configuration', null, 500);
   }
 };
 
