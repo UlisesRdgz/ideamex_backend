@@ -163,6 +163,15 @@ export interface ProjectResults {
     plots: Plot[];
   };
 
+  /**
+   * Avisos del pipeline sobre pasos que no se completaron.
+   *
+   * Una corrida puede terminar con estatus "Completado" y aun así haber
+   * omitido alguna salida. Sin este campo, el cliente no tendría forma de
+   * distinguir un resultado íntegro de uno al que le falta una gráfica.
+   */
+  warnings: string[];
+
   differentialExpression: DifferentialExpression[];
 
   integratedResults: {

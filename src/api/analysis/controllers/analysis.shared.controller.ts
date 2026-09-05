@@ -516,6 +516,42 @@ const parseTopGenesFromTopFile = (
 };
 
 /**
+ * Lee los avisos que el pipeline dejó registrados durante la corrida.
+ *
+ * El motor de R puede completar el análisis y aun así omitir alguna salida: por
+ * ejemplo, una gráfica que su versión de la biblioteca ya no sabe generar. Eso
+ * queda anotado en `BackendRunError.log`, un archivo que hasta ahora nadie
+ * leía, de modo que el proyecto aparecía como terminado sin señal alguna de la
+ * omisión.
+ *
+ * @param resultDir - Carpeta del proyecto.
+ * @returns Las líneas de detalle del aviso, o un arreglo vacío si no hubo.
+ */
+const readRunWarnings = (resultDir: string): string[] => {
+  const logPath = path.join(resultDir, BACKEND_FAILURE_LOG_FILE);
+  if (!fs.existsSync(logPath) || !fs.statSync(logPath).isFile()) {
+    return [];
+  }
+
+  try {
+    const content = fs.readFileSync(logPath, 'utf8');
+    const marca = content.indexOf('[detail]');
+    if (marca < 0) {
+      return [];
+    }
+
+    return content
+      .slice(marca + '[detail]'.length)
+      .split(/\r?\n/)
+      .map((linea) => linea.replace(/\s*\.{2,}\s*/g, ' ').trim())
+      .filter((linea) => linea.length > 0 && linea !== '(empty)');
+  } catch (error) {
+    console.error('[FS] Could not read run warnings:', error);
+    return [];
+  }
+};
+
+/**
  * Nombres con los que cada método rotula la columna de cambio de expresión.
  *
  * No hay convención común: edgeR y limma escriben `logFC`, NOISeq `log2FC` y
@@ -2592,6 +2628,7 @@ export const buildStructuredProjectResultsPayload = (
       distributions: [],
       plots: dataAnalysisPlots,
     },
+    warnings: readRunWarnings(resultDir),
     differentialExpression,
     integratedResults: {
       vennDiagrams,
