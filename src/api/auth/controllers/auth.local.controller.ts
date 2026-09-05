@@ -16,6 +16,7 @@ import {
   createUser,
   findUserByEmail,
   findUserByToken,
+  updateLastSession,
   updateUserToken,
 } from '../auth.service';
 import { sendErrorResponse, sendSuccessResponse } from '../../../utils/response';
@@ -173,6 +174,15 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
     if (!passwordMatch) {
       sendErrorResponse(res, 'Invalid email or password', null, 401);
       return;
+    }
+
+    // Deja constancia del acceso. Se aísla del flujo principal a propósito: es
+    // información de auditoría, y que falle su escritura no es motivo para
+    // negarle la sesión a quien ya acreditó sus credenciales.
+    try {
+      await updateLastSession(user.id_user);
+    } catch (sessionError) {
+      console.error('[AUTH] Could not record last session:', sessionError);
     }
 
     // Emite JWT interno con vigencia de 30 días.

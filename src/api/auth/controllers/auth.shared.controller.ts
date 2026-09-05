@@ -7,7 +7,7 @@
  */
 
 import jwt from 'jsonwebtoken';
-import { findOrCreateUser } from '../auth.service';
+import { findOrCreateUser, updateLastSession } from '../auth.service';
 import { appConfig } from '../../../config/appConfig';
 
 /**
@@ -148,6 +148,14 @@ export const loginOrRegisterGoogleUser = async (params: {
     username,
     googleId: params.googleId,
   });
+
+  // Mismo registro de auditoría que en el acceso local, y por el mismo motivo
+  // no se deja que un fallo aquí impida entrar.
+  try {
+    await updateLastSession(user.id_user);
+  } catch (sessionError) {
+    console.error('[AUTH] Could not record last session:', sessionError);
+  }
 
   const token = createAuthToken({
     id_user: user.id_user,

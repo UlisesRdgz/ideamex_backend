@@ -130,6 +130,17 @@ export const updateUserToken = async (
 };
 
 /**
+ * Registra el momento del último inicio de sesión del usuario.
+ *
+ * @async
+ * @function updateLastSession
+ * @param id_user - ID del usuario.
+ */
+export const updateLastSession = async (id_user: number): Promise<void> => {
+  await pool.query('UPDATE users SET last_session = NOW() WHERE id_user = ?', [id_user]);
+};
+
+/**
  * Busca un usuario por su token de restablecimiento.
  * 
  * @async
