@@ -302,7 +302,7 @@ export const validateRunAnalysis = [
       // En formato selection, todas las llaves conocidas son obligatorias.
       for (const key of allowedKeys) {
         if (!(key in row)) {
-          throw new Error(`selectedMethods.${key} es obligatorio`);
+          throw new Error(`selectedMethods.${key} is required`);
         }
       }
 
@@ -313,7 +313,7 @@ export const validateRunAnalysis = [
 
         const fieldValue = row[key];
         if (typeof fieldValue !== 'boolean') {
-          throw new Error(`selectedMethods.${key} debe ser booleano`);
+          throw new Error(`selectedMethods.${key} must be a boolean`);
         }
       }
 
@@ -339,31 +339,31 @@ export const validateRunAnalysis = [
 
       for (const field of requiredNumericFields) {
         if (params[field] === undefined || params[field] === null || String(params[field]).trim() === '') {
-          throw new Error(`parameters.${field} es obligatorio`);
+          throw new Error(`parameters.${field} is required`);
         }
         if (Number.isNaN(Number(params[field]))) {
-          throw new Error(`parameters.${field} debe ser numérico`);
+          throw new Error(`parameters.${field} must be numeric`);
         }
       }
 
       for (const field of requiredBooleanFields) {
         if (params[field] === undefined) {
-          throw new Error(`parameters.${field} es obligatorio`);
+          throw new Error(`parameters.${field} is required`);
         }
         if (typeof params[field] !== 'boolean') {
-          throw new Error(`parameters.${field} debe ser booleano`);
+          throw new Error(`parameters.${field} must be a boolean`);
         }
       }
 
       for (const field of optionalNumericFields) {
         if (params[field] !== undefined && Number.isNaN(Number(params[field]))) {
-          throw new Error(`parameters.${field} debe ser numérico`);
+          throw new Error(`parameters.${field} must be numeric`);
         }
       }
 
       for (const field of optionalBooleanFields) {
         if (params[field] !== undefined && typeof params[field] !== 'boolean') {
-          throw new Error(`parameters.${field} debe ser booleano`);
+          throw new Error(`parameters.${field} must be a boolean`);
         }
       }
 
