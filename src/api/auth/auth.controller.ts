@@ -10,6 +10,7 @@
 export {
   registerUser,
   activateUser,
+  resendActivationEmail,
   loginUser,
 } from './controllers/auth.local.controller';
 

@@ -139,6 +139,7 @@ Todas las rutas cuelgan de la raíz porque en producción nginx elimina el prefi
 | --- | --- | --- |
 | `POST` | `/auth/register` | Registra un usuario y envía el correo de activación. |
 | `GET` | `/auth/activate` | Activa la cuenta con el token recibido por correo. |
+| `POST` | `/auth/resend-activation` | Reenvía el correo de activación con un token nuevo. Limitado a 3 peticiones cada 15 min. |
 | `POST` | `/auth/login` | Inicia sesión y devuelve el JWT. |
 | `POST` | `/auth/request-password-reset` | Envía el enlace de recuperación. |
 | `POST` | `/auth/reset-password` | Establece la nueva contraseña. |

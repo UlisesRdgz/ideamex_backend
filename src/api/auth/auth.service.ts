@@ -108,20 +108,23 @@ export const activateUserAccount = async (id_user: number): Promise<void> => {
 };
 
 /**
- * Actualiza el token de restablecimiento de contraseña y su expiración.
- * 
+ * Sustituye el token de un solo uso del usuario y su expiración.
+ *
+ * La tabla guarda un único `token`, que sirve tanto para activar la cuenta como
+ * para restablecer la contraseña. Emitir uno nuevo invalida el anterior, que es
+ * justo lo que se busca al reenviar un enlace caducado.
+ *
  * @async
- * @function updateUserResetToken
+ * @function updateUserToken
  * @param userId - ID del usuario.
  * @param token - Token generado.
  * @param tokenExpiration - Fecha de expiración.
  */
-export const updateUserResetToken = async (
+export const updateUserToken = async (
   userId: number,
   token: string,
   tokenExpiration: Date
 ): Promise<void> => {
-  // Guarda token temporal y fecha de expiración para recuperación de contraseña.
   const query = `UPDATE users SET token = ?, token_expiration = ? WHERE id_user = ?`;
   await pool.query(query, [token, tokenExpiration, userId]);
 };

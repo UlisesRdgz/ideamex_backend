@@ -11,10 +11,12 @@ import {
   activateUser,
   loginUser,
   registerUser,
+  resendActivationEmail,
 } from '../auth.controller';
 import {
   validateLogin,
   validateRegistration,
+  validateResendActivation,
   validateRequest,
 } from '../../../middlewares/validation.middleware';
 import { checkEmailExists } from '../auth.middleware';
@@ -30,6 +32,13 @@ localAuthRouter.post(
 );
 
 localAuthRouter.get('/activate', activateUser);
+
+localAuthRouter.post(
+  '/resend-activation',
+  validateResendActivation,
+  validateRequest,
+  resendActivationEmail
+);
 
 localAuthRouter.post(
   '/login',

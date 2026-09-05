@@ -81,9 +81,8 @@ app.use(
   swaggerUi.setup(swaggerSpec)
 );
 
-// Rate limit para evitar spam en el formulario de contacto. Es el único endpoint
-// sin autenticación con efecto externo —envía correo—, así que sin límite
-// serviría para inundar el buzón del proyecto.
+// Rate limit para evitar spam en el formulario de contacto. Sin límite serviría
+// para inundar el buzón del proyecto.
 const contactLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 2,
@@ -99,8 +98,29 @@ const contactLimiter = rateLimit({
   },
 });
 
+// El reenvío de activación también envía correo sin exigir autenticación, y
+// además el destinatario lo elige quien llama: sin límite permitiría usar el
+// servidor para hostigar cualquier buzón registrado. Se concede algo más de
+// margen que en contacto porque reintentar es legítimo si el correo tarda.
+const resendActivationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req: Request, res: Response) => {
+    sendErrorResponse(
+      res,
+      'You have reached the request limit. Try again later.',
+      null,
+      429
+    );
+  },
+});
+
 // Rutas principales
 // Todas usan `basePath` para soportar despliegues detrás de reverse proxy.
+// El limitador se monta antes del router para que aplique solo a esa ruta.
+app.use(`${appConfig.basePath}auth/resend-activation`, resendActivationLimiter);
 app.use(`${appConfig.basePath}auth`, authRoutes);
 app.use(`${appConfig.basePath}contact`, contactLimiter, contactRoutes);
 app.use(`${appConfig.basePath}analysis`, analysisRoutes);

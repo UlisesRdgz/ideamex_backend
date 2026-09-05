@@ -14,7 +14,7 @@ import {
   findUserByEmail,
   findUserByResetToken,
   updateUserPassword,
-  updateUserResetToken,
+  updateUserToken,
 } from '../auth.service';
 import { sendErrorResponse, sendSuccessResponse } from '../../../utils/response';
 
@@ -47,7 +47,7 @@ export const requestPasswordReset = async (req: Request, res: Response): Promise
     const expiration = new Date(Date.now() + 60 * 60 * 1000);
 
     // Envía enlace de recuperación al correo registrado.
-    await updateUserResetToken(user.id_user, resetToken, expiration);
+    await updateUserToken(user.id_user, resetToken, expiration);
     await sendPasswordResetEmail(email, resetToken);
 
     sendSuccessResponse(res, 'Password reset email sent');

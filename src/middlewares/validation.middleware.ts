@@ -110,6 +110,15 @@ export const validatePasswordResetRequest = [
 ];
 
 /**
+ * Reglas de validación para reenviar el correo de activación.
+ */
+export const validateResendActivation = [
+  body('email')
+    .isEmail()
+    .withMessage('Invalid email address'),
+];
+
+/**
  * Reglas de validación para restablecer la contraseña con token.
  */
 export const validatePasswordReset = [

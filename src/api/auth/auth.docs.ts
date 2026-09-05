@@ -58,6 +58,16 @@
  *           description: Token ID generado por Google Sign-In en frontend.
  *       additionalProperties: false
  *
+ *     ResendActivationInput:
+ *       type: object
+ *       required: [email]
+ *       properties:
+ *         email:
+ *           type: string
+ *           format: email
+ *           example: user@example.com
+ *       additionalProperties: false
+ *
  *     PasswordResetRequestInput:
  *       type: object
  *       required: [email]
@@ -194,6 +204,45 @@
  *         $ref: '#/components/responses/BadRequest'
  *       404:
  *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+
+/**
+ * @swagger
+ * /auth/resend-activation:
+ *   post:
+ *     tags: [Auth]
+ *     operationId: resendActivationEmail
+ *     summary: Reenvía el correo de activación
+ *     description: >
+ *       Emite un token de activación nuevo, con vigencia de 24 horas, y lo envía
+ *       por correo. El token anterior queda invalidado, de modo que solo el
+ *       último enlace enviado es utilizable. Pensado para cuentas cuyo enlace
+ *       caducó. Limitado a 3 peticiones cada 15 minutos por dirección IP.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ResendActivationInput'
+ *     responses:
+ *       200:
+ *         description: Correo de activación reenviado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BasicSuccessResponse'
+ *       400:
+ *         description: Solicitud inválida o cuenta ya activada.
+ *         $ref: '#/components/responses/BadRequest'
+ *       403:
+ *         description: La cuenta usa autenticación de Google y no requiere activación.
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       429:
+ *         $ref: '#/components/responses/TooManyRequests'
  *       500:
  *         $ref: '#/components/responses/InternalServerError'
  */
