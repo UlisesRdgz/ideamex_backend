@@ -8,7 +8,10 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { countSignificantGenesFromTopFile } from '../../src/api/analysis/controllers/analysis.shared.controller';
+import {
+  countSignificantGenesFromTopFile,
+  parseTopGenesFromTopFile,
+} from '../../src/api/analysis/controllers/analysis.shared.controller';
 
 let carpeta: string;
 
@@ -159,5 +162,38 @@ describe('nombres de columna por metodo', () => {
       downregulated: 1,
       significant: 2,
     });
+  });
+});
+
+describe('parseTopGenesFromTopFile', () => {
+  // Sin el campo `regulation`, quien pinte la vista previa por el signo del
+  // logFC mostraria lo contrario que los conteos de la misma respuesta.
+  it('acompana cada gen con su sentido de regulacion', () => {
+    const ruta = archivoTop('vista-previa.txt', 2, 1);
+    const genes = parseTopGenesFromTopFile(ruta);
+    expect(genes).toHaveLength(3);
+    expect(genes.map((g) => g.regulation)).toEqual(['up', 'up', 'down']);
+  });
+
+  it('el sentido no sigue al signo del logFC', () => {
+    const ruta = archivoTop('vista-previa-signo.txt', 1, 1);
+    const [sobre, sub] = parseTopGenesFromTopFile(ruta);
+    expect(sobre.logFC).toBeLessThan(0);
+    expect(sobre.regulation).toBe('up');
+    expect(sub.logFC).toBeGreaterThan(0);
+    expect(sub.regulation).toBe('down');
+  });
+
+  it('mantiene el limite de veinte genes de la vista previa', () => {
+    const ruta = archivoTop('vista-previa-larga.txt', 30, 30);
+    expect(parseTopGenesFromTopFile(ruta)).toHaveLength(20);
+  });
+
+  it('recurre al signo si no hay columna Expression', () => {
+    // El pipeline siempre la escribe. En un archivo ajeno no hay forma de saber
+    // cual es la basal, asi que se usa el mismo respaldo que el conteo.
+    const ruta = path.join(carpeta, 'vista-previa-sin-expression.txt');
+    fs.writeFileSync(ruta, 'ID\tlogFC\tFDR\nGEN_A\t2.5\t1e-8\n');
+    expect(parseTopGenesFromTopFile(ruta)[0].regulation).toBe('up');
   });
 });

@@ -95,7 +95,17 @@ export type DifferentialExpressionComparison = {
   downregulated: number;
   significant: number;
   plots: Array<{ type: PlotType; imageUrl: string }>;
-  topGenes: Array<{ gene: string; logFC: number; pValue: number }>;
+  /**
+   * Vista previa de genes para la interfaz.
+   * `logFC` es el valor crudo de R, referido a la segunda condición del
+   * contraste; `regulation` da el sentido respecto a la primera.
+   */
+  topGenes: Array<{
+    gene: string;
+    logFC: number;
+    pValue: number;
+    regulation: DifferentialDirection | null;
+  }>;
 };
 
 export type DifferentialExpression = {

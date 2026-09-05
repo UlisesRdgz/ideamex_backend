@@ -24,6 +24,7 @@ import {
   UploadProjectPayloadLike,
 } from '../analysis.types';
 import {
+  type DifferentialDirection,
   type DifferentialExpression,
   type DifferentialExpressionComparison,
   type IntegratedResultsTable,
@@ -471,12 +472,23 @@ const findAllComparisonPlotFileNames = (comparisonPath: string): string[] => {
 };
 
 /**
- * Parsea genes top (gene, logFC, pValue) desde archivo *_TOP.txt.
+ * Extrae la vista previa de genes que muestra la interfaz.
+ * El límite de 20 es deliberado: es una muestra, no un conteo. El `logFC` va
+ * crudo, y su signo solo se interpreta bien junto al campo `regulation`.
+ *
+ * @param topFilePath - Archivo TOP de la comparación.
+ * @param limit - Genes a devolver.
+ * @returns Los genes, o vacío si el archivo no se puede interpretar.
  */
-const parseTopGenesFromTopFile = (
+export const parseTopGenesFromTopFile = (
   topFilePath: string,
   limit = 20
-): Array<{ gene: string; logFC: number; pValue: number }> => {
+): Array<{
+  gene: string;
+  logFC: number;
+  pValue: number;
+  regulation: DifferentialDirection | null;
+}> => {
   const table = parseDelimitedTableFile(topFilePath);
   if (!table) {
     return [];
@@ -484,13 +496,19 @@ const parseTopGenesFromTopFile = (
 
   const geneIndex = findHeaderColumnIndex(table.headers, [/^gene$/, /symbol/, /id$/]);
   const logFCIndex = findHeaderColumnIndex(table.headers, FOLD_CHANGE_COLUMN_PATTERNS);
+  const expressionIndex = findHeaderColumnIndex(table.headers, EXPRESSION_COLUMN_PATTERNS);
   const pValueIndex = findHeaderColumnIndex(table.headers, [/pvalue/, /p\.value/, /fdr/, /padj/]);
 
   if (geneIndex < 0) {
     return [];
   }
 
-  const output: Array<{ gene: string; logFC: number; pValue: number }> = [];
+  const output: Array<{
+    gene: string;
+    logFC: number;
+    pValue: number;
+    regulation: DifferentialDirection | null;
+  }> = [];
 
   for (const row of table.rows) {
     const gene = row[geneIndex];
@@ -505,6 +523,7 @@ const parseTopGenesFromTopFile = (
       gene: gene.trim(),
       logFC,
       pValue,
+      regulation: resolveRegulationDirection(row, expressionIndex, logFCIndex),
     });
 
     if (output.length >= limit) {
@@ -581,7 +600,7 @@ const resolveRegulationDirection = (
   row: string[],
   expressionIndex: number,
   foldChangeIndex: number
-): 'up' | 'down' | null => {
+): DifferentialDirection | null => {
   if (expressionIndex >= 0) {
     const label = (row[expressionIndex] ?? '').trim().toLowerCase();
     if (label.startsWith('up')) {
