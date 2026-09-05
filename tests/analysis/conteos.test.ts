@@ -100,3 +100,21 @@ describe('countSignificantGenesFromTopFile', () => {
     expect(countSignificantGenesFromTopFile(ruta)).toBeNull();
   });
 });
+
+describe('nombres de columna por metodo', () => {
+  // Cada paquete de R rotula distinto el cambio de expresion. Reconocer solo
+  // el de edgeR dejaba los conteos de NOISeq y DESeq2 en cero.
+  it.each([
+    ['edgeR y limma', 'logFC'],
+    ['NOISeq', 'log2FC'],
+    ['DESeq2', 'log2FoldChange'],
+  ])('reconoce la columna de %s (%s)', (_metodo, columna) => {
+    const ruta = path.join(carpeta, `col-${columna}.txt`);
+    fs.writeFileSync(ruta, `ID\t${columna}\tFDR\nGEN_A\t2.5\t1e-8\nGEN_B\t-3.1\t1e-8\n`);
+    expect(countSignificantGenesFromTopFile(ruta)).toEqual({
+      upregulated: 1,
+      downregulated: 1,
+      significant: 2,
+    });
+  });
+});

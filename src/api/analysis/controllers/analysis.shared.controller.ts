@@ -483,7 +483,7 @@ const parseTopGenesFromTopFile = (
   }
 
   const geneIndex = findHeaderColumnIndex(table.headers, [/^gene$/, /symbol/, /id$/]);
-  const logFCIndex = findHeaderColumnIndex(table.headers, [/logfc/, /^lfc$/]);
+  const logFCIndex = findHeaderColumnIndex(table.headers, FOLD_CHANGE_COLUMN_PATTERNS);
   const pValueIndex = findHeaderColumnIndex(table.headers, [/pvalue/, /p\.value/, /fdr/, /padj/]);
 
   if (geneIndex < 0) {
@@ -516,6 +516,15 @@ const parseTopGenesFromTopFile = (
 };
 
 /**
+ * Nombres con los que cada método rotula la columna de cambio de expresión.
+ *
+ * No hay convención común: edgeR y limma escriben `logFC`, NOISeq `log2FC` y
+ * DESeq2 `log2FoldChange`. Reconocer solo el primero dejaba en cero los conteos
+ * de los otros dos.
+ */
+const FOLD_CHANGE_COLUMN_PATTERNS = [/^logfc$/, /^lfc$/, /^log2fc$/, /^log2foldchange$/, /logfc/, /log2foldchange/];
+
+/**
  * Escapa los metacaracteres de una cadena para usarla dentro de una expresión regular.
  */
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -538,7 +547,7 @@ export const countSignificantGenesFromTopFile = (
     return null;
   }
 
-  const logFCIndex = findHeaderColumnIndex(table.headers, [/logfc/, /^lfc$/]);
+  const logFCIndex = findHeaderColumnIndex(table.headers, FOLD_CHANGE_COLUMN_PATTERNS);
   if (logFCIndex < 0) {
     return null;
   }
@@ -580,7 +589,7 @@ const parseDifferentialCountsFromMainFile = (
     return { upregulated: 0, downregulated: 0, significant: 0 };
   }
 
-  const logFCIndex = findHeaderColumnIndex(table.headers, [/logfc/, /^lfc$/]);
+  const logFCIndex = findHeaderColumnIndex(table.headers, FOLD_CHANGE_COLUMN_PATTERNS);
   const significanceIndex = findHeaderColumnIndex(table.headers, [/fdr/, /padj/, /pvalue/, /p\.value/]);
 
   if (logFCIndex < 0) {
