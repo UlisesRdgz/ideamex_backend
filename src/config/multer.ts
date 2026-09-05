@@ -18,13 +18,31 @@ import { isValidExtension, sanitizeName, ensureDirectory, sanitizeEmailPrefix } 
 import { appConfig } from './appConfig';
 
 /**
+ * Carpeta de tránsito donde aterrizan las subidas antes de validarse.
+ *
+ * @function getUploadStagingPath
+ */
+export const getUploadStagingPath = (): string => {
+  const basePath = process.env.PROJECTS_BASE_PATH || path.resolve(process.cwd(), 'projects');
+  return path.join(basePath, '.uploads');
+};
+
+/**
  * Configuración del almacenamiento de archivos para proyectos.
- * Crea carpetas por usuario y proyecto usando el token JWT y `req.body.title`.
+ *
+ * El archivo se escribe en una carpeta de tránsito, no en la del proyecto. El
+ * controlador lo valida y solo entonces lo traslada a su ubicación definitiva.
+ *
+ * Se hace así por dos motivos. El primero es que la carpeta del proyecto se
+ * construye a partir del título, y en una petición multiparte los campos de
+ * texto solo están disponibles si el cliente los envió antes del archivo:
+ * depender de ello hacía que la carga fallara según el orden de los campos.
+ * El segundo es que un archivo rechazado por la validación no debe quedar en el
+ * árbol de proyectos ni por un instante.
  */
 export const projectStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const authHeader = req.header('Authorization');
-    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
     const withStatus = (message: string, statusCode: number): Error => {
       const err = new Error(message) as Error & { statusCode?: number };
       err.statusCode = statusCode;
@@ -36,33 +54,22 @@ export const projectStorage = multer.diskStorage({
     }
 
     const token = authHeader.split(' ')[1];
-    let decoded: jwt.JwtPayload;
 
     try {
       // `appConfig.jwtSecret` está garantizada por `checkRequiredConfig` al arranque.
-      decoded = jwt.verify(token, appConfig.jwtSecret) as jwt.JwtPayload;
+      jwt.verify(token, appConfig.jwtSecret);
     } catch (err) {
       console.error('[MULTER] Invalid token:', err);
       return cb(withStatus('Invalid or expired token', 401), '');
     }
 
-    const email = decoded.email;
-    if (!email || !title) {
-      return cb(withStatus('Missing user or title', 400), '');
-    }
-
-    // Reproduce la misma sanitización usada por controladores para evitar rutas inconsistentes.
-    const emailPrefix = sanitizeEmailPrefix(email.split('@')[0]);
-    const projectFolder = sanitizeName(title);
-    const basePath = process.env.PROJECTS_BASE_PATH || path.resolve(process.cwd(), 'projects');
-    const fullFolder = path.join(basePath, emailPrefix, projectFolder);
+    const stagingPath = getUploadStagingPath();
 
     try {
-      // Crea recursivamente la carpeta de destino si no existe.
-      ensureDirectory(fullFolder);
-      cb(null, fullFolder);
+      ensureDirectory(stagingPath);
+      cb(null, stagingPath);
     } catch (err) {
-      console.error('[MULTER] Storage path error:', { basePath, fullFolder, err });
+      console.error('[MULTER] Storage path error:', { stagingPath, err });
       return cb(withStatus('Storage path is not writable. Verify PROJECTS_BASE_PATH permissions.', 500), '');
     }
   },

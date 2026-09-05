@@ -9,7 +9,8 @@
 import fs from 'fs';
 import path from 'path';
 import { Request, Response } from 'express';
-import { sanitizeEmailPrefix, sanitizeName } from '../../../utils/file';
+import { ensureDirectory, sanitizeEmailPrefix, sanitizeName } from '../../../utils/file';
+import { validateCountTableFile } from '../../../utils/countTable';
 import { sendErrorResponse, sendSuccessResponse } from '../../../utils/response';
 import {
   ProjectJsonPayload,
@@ -30,7 +31,12 @@ import {
 
 /**
  * Controlador para manejar la carga de un nuevo proyecto.
- * Multer ya escribió el archivo cuando esto corre: cada rama de error lo limpia.
+ *
+ * Cuando esto corre, multer ya escribió el archivo en la carpeta de tránsito.
+ * El orden importa: primero se valida el contenido y solo un archivo correcto se
+ * traslada a la carpeta del proyecto, de modo que una tabla rechazada nunca
+ * queda almacenada. Cada rama de error retira el archivo de tránsito.
+ *
  * El título duplicado se revisa dos veces por la ventana hasta el `INSERT`.
  */
 export const handleProjectUpload = async (req: Request, res: Response): Promise<void> => {
@@ -60,34 +66,55 @@ export const handleProjectUpload = async (req: Request, res: Response): Promise<
       return;
     }
 
-    const alreadyExists = await projectExists(user.id_user, title);
-    if (alreadyExists) {
+    // El archivo aún está en la carpeta de tránsito. Cualquier salida por error
+    // a partir de aquí debe retirarlo: la especificación exige que una tabla
+    // rechazada no quede almacenada en el servidor.
+    const descartarSubida = (motivo: string): void => {
       try {
         if (file.path && fs.existsSync(file.path)) {
           fs.rmSync(file.path, { force: true });
-          // También se retira la carpeta que multer creó para este proyecto, pero
-          // solo si quedó vacía: si contiene algo más, pertenece a un proyecto
-          // anterior con el mismo título sanitizado y borrarla destruiría sus datos.
-          const parentFolder = path.dirname(file.path);
-          if (fs.existsSync(parentFolder) && fs.readdirSync(parentFolder).length === 0) {
-            fs.rmdirSync(parentFolder);
-          }
         }
       } catch (cleanupError) {
-        // La limpieza es de mejor esfuerzo: si falla se deja constancia en el log,
-        // pero el usuario debe recibir igual su 409 por título duplicado.
-        console.error('[FS] Error cleaning duplicate upload:', cleanupError);
+        console.error(`[FS] Error cleaning upload after ${motivo}:`, cleanupError);
       }
+    };
 
+    // Verificación técnica del contenido. R no detecta estos errores: los
+    // absorbe renombrando columnas o desalineando renglones, de modo que el
+    // análisis terminaría sin fallar pero sobre datos que no son los del usuario.
+    const validation = await validateCountTableFile(file.path);
+    if (!validation.ok) {
+      descartarSubida('failed validation');
+      sendErrorResponse(res, validation.error, null, 400);
+      return;
+    }
+
+    const alreadyExists = await projectExists(user.id_user, title);
+    if (alreadyExists) {
+      descartarSubida('duplicate title');
       sendErrorResponse(res, 'A project with the same title already exists', null, 409);
       return;
     }
 
-    // Se reconstruye con las mismas funciones que usó multer, en vez de leer
-    // `file.path`, para guardar en la base una ruta relativa a la carpeta de
-    // proyectos y no la absoluta del servidor.
+    // Validado y sin conflicto de título: ahora sí se traslada a su ubicación
+    // definitiva, cuya ruta depende del título del proyecto.
     const emailPrefix = sanitizeEmailPrefix(user.email);
     const projectFolder = sanitizeName(title);
+    const basePath = process.env.PROJECTS_BASE_PATH || path.resolve(process.cwd(), 'projects');
+    const destinationFolder = path.join(basePath, emailPrefix, projectFolder);
+
+    try {
+      ensureDirectory(destinationFolder);
+      fs.renameSync(file.path, path.join(destinationFolder, file.filename));
+    } catch (moveError) {
+      console.error('[FS] Error moving upload to project folder:', moveError);
+      descartarSubida('move failure');
+      sendErrorResponse(res, 'Server error during project upload', null, 500);
+      return;
+    }
+
+    // Se guarda en la base una ruta relativa a la carpeta de proyectos, no la
+    // absoluta del servidor.
     const relativePath = path.posix.join(emailPrefix, projectFolder, file.filename);
     const createPayload: ProjectJsonPayload = {
       imageUrl: extractUploadImageUrl(payload),
