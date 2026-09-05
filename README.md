@@ -66,10 +66,6 @@ arrancar:
 mysql -u root -p ideamex < deploy/schema.sql
 ```
 
-Sobre una base que ya existía, aplica en orden los archivos de
-[`deploy/migrations/`](deploy/migrations); `schema.sql` ya los incluye, así que
-una base nueva no los necesita.
-
 ### Variables de entorno
 
 | Variable | Obligatoria | Valor por defecto | Descripción |

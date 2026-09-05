@@ -10,7 +10,6 @@
  * @author Ulises Rodríguez García
  */
 
-import { SupportedLanguage } from '../config/i18n';
 import {
   IDEAMEX_LOGO_BASE64,
   IDEAMEX_LOGO_CID,
@@ -72,19 +71,17 @@ export const buildSender = (): string =>
  * correo ignoran hojas de estilo externas y varios no soportan flexbox, que era
  * justo lo que descuadraba el encabezado anterior.
  *
- * @param params.language - Idioma del documento, para el atributo `lang`.
  * @param params.title - Título del documento; suele coincidir con el asunto.
  * @param params.preheader - Resumen que algunos clientes muestran junto al asunto.
  * @param params.contentHTML - Contenido ya compuesto, sin encabezado ni pie.
  * @returns HTML completo listo para enviar.
  */
 export const buildEmailShell = (params: {
-  language: SupportedLanguage;
   title: string;
   preheader: string;
   contentHTML: string;
 }): string => `<!DOCTYPE html>
-<html lang="${params.language}">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />

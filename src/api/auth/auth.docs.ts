@@ -33,14 +33,6 @@
  *           type: string
  *           format: password
  *           example: Segura@123
- *         language:
- *           type: string
- *           enum: [es, en, fr]
- *           description: >
- *             Idioma de la cuenta; determina el idioma de los correos que se le
- *             envíen. Opcional: si se omite, se deduce de la cabecera
- *             `Accept-Language` y, en último caso, se usa `es`.
- *           example: es
  *       additionalProperties: false
  *
  *     LoginInput:

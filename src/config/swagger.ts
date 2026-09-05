@@ -93,7 +93,7 @@ const swaggerOptions: Options = {
                 message: 'Validation failed',
                 details: [
                   {
-                    msg: 'Correo electrónico inválido',
+                    msg: 'Invalid email address',
                     path: 'email',
                   },
                 ],
@@ -110,7 +110,7 @@ const swaggerOptions: Options = {
               },
               example: {
                 status: 'error',
-                message: 'Token inválido o expirado',
+                message: 'Invalid or expired token',
                 details: null,
               },
             },
@@ -125,7 +125,7 @@ const swaggerOptions: Options = {
               },
               example: {
                 status: 'error',
-                message: 'No tienes permisos para esta operación',
+                message: 'You do not have permission for this operation',
                 details: null,
               },
             },
@@ -140,7 +140,7 @@ const swaggerOptions: Options = {
               },
               example: {
                 status: 'error',
-                message: 'Recurso no encontrado',
+                message: 'Resource not found',
                 details: null,
               },
             },
@@ -155,7 +155,7 @@ const swaggerOptions: Options = {
               },
               example: {
                 status: 'error',
-                message: 'Conflicto de estado del recurso',
+                message: 'Resource state conflict',
                 details: null,
               },
             },
@@ -170,7 +170,7 @@ const swaggerOptions: Options = {
               },
               example: {
                 status: 'error',
-                message: 'Has alcanzado el límite de solicitudes',
+                message: 'You have reached the request limit',
                 details: null,
               },
             },
@@ -185,7 +185,7 @@ const swaggerOptions: Options = {
               },
               example: {
                 status: 'error',
-                message: 'Error interno del servidor',
+                message: 'Server error',
                 details: null,
               },
             },

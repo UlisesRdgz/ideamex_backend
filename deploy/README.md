@@ -55,20 +55,17 @@ Es el GID del grupo `docker` en el host, necesario para que el backend pueda hac
 `docker exec` sobre `ideamex-r` a través del socket montado. Si se despliega en otra
 máquina hay que ajustarlo (`getent group docker`).
 
-## Aplicar una migración de base de datos
+## Cambios de esquema
 
-Cuando el cambio toca el esquema, la migración va **antes** de levantar la imagen
-nueva: el código nuevo ya cuenta con las columnas, así que al revés el arranque
-quedaría escribiendo contra una tabla que no las tiene.
+`deploy/schema.sql` es el punto de partida de una base nueva. Cuando un cambio
+toca el esquema de una base ya existente, la alteración va **antes** de levantar
+la imagen nueva: el código nuevo cuenta con las columnas, así que al revés el
+arranque quedaría escribiendo contra una tabla que no las tiene.
 
 ```bash
-cd ~/ideamex2/ideamex_backend
 docker exec -i ideamex-db mariadb -u"$DB_USER" -p"$DB_PASSWORD" ideamex \
-  < deploy/migrations/<archivo>.sql
+  -e "ALTER TABLE ..."
 ```
-
-Las migraciones ya aplicadas se conservan en `deploy/migrations/` y están
-incorporadas a `deploy/schema.sql`, que es el punto de partida de una base nueva.
 
 ## Reconstruir el backend tras un cambio de código
 

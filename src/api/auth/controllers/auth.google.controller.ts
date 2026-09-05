@@ -39,7 +39,7 @@ export const startGoogleOAuth = async (req: Request, res: Response): Promise<voi
     res.redirect(authUrl.toString());
   } catch (error) {
     if (error instanceof Error && error.message === 'GOOGLE_OAUTH_CONFIG_MISSING') {
-      sendErrorResponse(res, 'Google OAuth no está configurado en el servidor.', null, 500);
+      sendErrorResponse(res, 'Google OAuth is not configured on the server.', null, 500);
       return;
     }
 
@@ -106,7 +106,7 @@ export const handleGoogleOAuthCallback = async (req: Request, res: Response): Pr
       if (error.message === 'LOCAL_ACCOUNT_EXISTS') {
         sendErrorResponse(
           res,
-          'Este correo ya está registrado con contraseña. Usa el login local.',
+          'This email is already registered with a password. Use local login.',
           null,
           409
         );
@@ -114,7 +114,7 @@ export const handleGoogleOAuthCallback = async (req: Request, res: Response): Pr
       }
 
       if (error.message === 'GOOGLE_OAUTH_CONFIG_MISSING') {
-        sendErrorResponse(res, 'Google OAuth no está configurado en el servidor.', null, 500);
+        sendErrorResponse(res, 'Google OAuth is not configured on the server.', null, 500);
         return;
       }
 
@@ -126,7 +126,7 @@ export const handleGoogleOAuthCallback = async (req: Request, res: Response): Pr
         error.message === 'GOOGLE_AUDIENCE_MISMATCH' ||
         error.message === 'GOOGLE_EMAIL_NOT_VERIFIED'
       ) {
-        sendErrorResponse(res, 'No se pudo validar la identidad con Google.', null, 401);
+        sendErrorResponse(res, 'Could not validate identity with Google.', null, 401);
         return;
       }
     }
@@ -154,7 +154,7 @@ export const loginWithGoogle = async (req: Request, res: Response): Promise<void
       if (error.message === 'LOCAL_ACCOUNT_EXISTS') {
         sendErrorResponse(
           res,
-          'Este correo ya está registrado con contraseña. Usa el login local.',
+          'This email is already registered with a password. Use local login.',
           null,
           409
         );
@@ -162,13 +162,13 @@ export const loginWithGoogle = async (req: Request, res: Response): Promise<void
       }
 
       if (error.message === 'GOOGLE_CONFIG_MISSING') {
-        sendErrorResponse(res, 'Google login no está configurado en el servidor.', null, 500);
+        sendErrorResponse(res, 'Google login is not configured on the server.', null, 500);
         return;
       }
 
       // Token emitido para otro client_id de Google.
       if (error.message === 'GOOGLE_AUDIENCE_MISMATCH') {
-        sendErrorResponse(res, 'Token de Google inválido para esta aplicación.', null, 401);
+        sendErrorResponse(res, 'Invalid Google token for this application.', null, 401);
         return;
       }
 
@@ -177,7 +177,7 @@ export const loginWithGoogle = async (req: Request, res: Response): Promise<void
         error.message === 'GOOGLE_TOKEN_INVALID' ||
         error.message === 'GOOGLE_EMAIL_NOT_VERIFIED'
       ) {
-        sendErrorResponse(res, 'No se pudo validar la identidad con Google.', null, 401);
+        sendErrorResponse(res, 'Could not validate identity with Google.', null, 401);
         return;
       }
     }

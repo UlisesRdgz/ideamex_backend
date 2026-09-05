@@ -15,7 +15,6 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
-import { normalizeLanguage, SUPPORTED_LANGUAGES } from '../config/i18n';
 import { sendErrorResponse } from '../utils/response';
 
 /**
@@ -31,7 +30,7 @@ export const validateRequest = (req: Request, res: Response, next: NextFunction)
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     // Retorna arreglo detallado para que frontend/Postman sepan qué campo falló.
-    sendErrorResponse(res, 'Validación fallida', errors.array(), 400);
+    sendErrorResponse(res, 'Validation failed', errors.array(), 400);
     return;
   }
   // Continúa al controlador solo cuando no hay errores.
@@ -45,15 +44,15 @@ export const validateRequest = (req: Request, res: Response, next: NextFunction)
 export const passwordValidationRules = () => [
   body('password')
     .isLength({ min: 8 })
-    .withMessage('La contraseña debe tener al menos 8 caracteres')
+    .withMessage('Password must be at least 8 characters long')
     .matches(/[A-Z]/)
-    .withMessage('Debe contener al menos una letra mayúscula')
+    .withMessage('Password must contain at least one uppercase letter')
     .matches(/[a-z]/)
-    .withMessage('Debe contener al menos una letra minúscula')
+    .withMessage('Password must contain at least one lowercase letter')
     .matches(/[0-9]/)
-    .withMessage('Debe contener al menos un número')
+    .withMessage('Password must contain at least one number')
     .matches(/[@$!%*?&]/)
-    .withMessage('Debe contener al menos un caracter especial'),
+    .withMessage('Password must contain at least one special character'),
 ];
 
 /**
@@ -62,27 +61,17 @@ export const passwordValidationRules = () => [
 export const validateRegistration = [
   body('email')
     .isEmail()
-    .withMessage('Correo electrónico inválido'),
+    .withMessage('Invalid email address'),
   body('username')
     .notEmpty()
-    .withMessage('El nombre de usuario es obligatorio'),
+    .withMessage('Username is required'),
   ...passwordValidationRules(),
   body('confirmPassword')
     .notEmpty()
-    .withMessage('La confirmación de contraseña es obligatoria')
+    .withMessage('Password confirmation is required')
     .custom((value, { req }) => {
       if (value !== req.body.password) {
-        throw new Error('Las contraseñas no coinciden');
-      }
-      return true;
-    }),
-  // Opcional: si el cliente no lo envía, el controlador deduce el idioma de la
-  // cabecera `Accept-Language`. Solo se rechaza un valor presente pero inválido.
-  body('language')
-    .optional()
-    .custom((value) => {
-      if (normalizeLanguage(value) === null) {
-        throw new Error(`Idioma no admitido. Valores válidos: ${SUPPORTED_LANGUAGES.join(', ')}`);
+        throw new Error('Passwords do not match');
       }
       return true;
     }),
@@ -94,10 +83,10 @@ export const validateRegistration = [
 export const validateLogin = [
   body('email')
     .isEmail()
-    .withMessage('Correo electrónico inválido'),
+    .withMessage('Invalid email address'),
   body('password')
     .notEmpty()
-    .withMessage('La contraseña es obligatoria'),
+    .withMessage('Password is required'),
 ];
 
 /**
@@ -106,9 +95,9 @@ export const validateLogin = [
 export const validateGoogleLogin = [
   body('idToken')
     .isString()
-    .withMessage('idToken debe ser una cadena')
+    .withMessage('idToken must be a string')
     .notEmpty()
-    .withMessage('idToken es obligatorio'),
+    .withMessage('idToken is required'),
 ];
 
 /**
@@ -117,7 +106,7 @@ export const validateGoogleLogin = [
 export const validatePasswordResetRequest = [
   body('email')
     .isEmail()
-    .withMessage('Correo electrónico inválido'),
+    .withMessage('Invalid email address'),
 ];
 
 /**
@@ -126,7 +115,7 @@ export const validatePasswordResetRequest = [
 export const validatePasswordReset = [
   body('token')
     .notEmpty()
-    .withMessage('El token es obligatorio'),
+    .withMessage('Token is required'),
   ...passwordValidationRules(),
 ];
 
@@ -137,40 +126,40 @@ export const validatePasswordReset = [
 export const validateContactForm = [
   body('fullName')
     .notEmpty()
-    .withMessage('El nombre completo es obligatorio')
+    .withMessage('Full name is required')
     .isLength({ max: 255 })
-    .withMessage('Máximo 255 caracteres')
+    .withMessage('Maximum 255 characters')
     .trim()
     .escape(),
 
   body('email')
     .notEmpty()
-    .withMessage('El correo electrónico es obligatorio')
+    .withMessage('Email address is required')
     .isEmail()
-    .withMessage('Correo electrónico inválido')
+    .withMessage('Invalid email address')
     .normalizeEmail(),
 
   body('phone')
     .notEmpty()
-    .withMessage('El número telefónico es obligatorio')
+    .withMessage('Phone number is required')
     .isMobilePhone('any')
-    .withMessage('Número de teléfono inválido')
+    .withMessage('Invalid phone number')
     .trim()
     .escape(),
 
   body('subject')
     .notEmpty()
-    .withMessage('El asunto es obligatorio')
+    .withMessage('Subject is required')
     .isLength({ max: 255 })
-    .withMessage('Máximo 255 caracteres')
+    .withMessage('Maximum 255 characters')
     .trim()
     .escape(),
 
   body('message')
     .notEmpty()
-    .withMessage('El mensaje es obligatorio')
+    .withMessage('Message is required')
     .isLength({ max: 1000 })
-    .withMessage('Máximo 1000 caracteres')
+    .withMessage('Maximum 1000 characters')
     .trim()
     .escape(),
 ];
@@ -183,13 +172,13 @@ export const validateContactForm = [
 export const validateRunAnalysis = [
   param('projectId')
     .isInt({ min: 1 })
-    .withMessage('El projectId debe ser un entero positivo'),
+    .withMessage('projectId must be a positive integer'),
 
   // Bloque de contrato estricto: evita ejecutar análisis con payloads parciales.
   body()
     .custom((payload) => {
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-        throw new Error('El body debe ser un objeto JSON válido');
+        throw new Error('Request body must be a valid JSON object');
       }
 
       const data = payload as Record<string, unknown>;
@@ -198,19 +187,19 @@ export const validateRunAnalysis = [
       const hasSelectedMethods = data.selectedMethods !== undefined;
 
       if (!hasMethods && !hasSelectedMethods) {
-        throw new Error('Debes enviar methods o selectedMethods');
+        throw new Error('Either methods or selectedMethods is required');
       }
 
       if (!Array.isArray(data.samples) || data.samples.length === 0) {
-        throw new Error('samples es obligatorio y debe contener al menos 1 elemento');
+        throw new Error('samples is required and must contain at least 1 item');
       }
 
       if (!Array.isArray(data.comparisons) || data.comparisons.length === 0) {
-        throw new Error('comparisons es obligatorio y debe contener al menos 1 elemento');
+        throw new Error('comparisons is required and must contain at least 1 item');
       }
 
       if (!data.parameters || typeof data.parameters !== 'object' || Array.isArray(data.parameters)) {
-        throw new Error('parameters es obligatorio y debe ser un objeto');
+        throw new Error('parameters is required and must be an object');
       }
 
       return true;
@@ -226,49 +215,49 @@ export const validateRunAnalysis = [
       if (typeof value === 'string') {
         // Valida inmediatamente formato compacto legacy.
         if (!/^[1-6]+$/.test(value)) {
-          throw new Error('methods solo permite dígitos entre 1 y 6');
+          throw new Error('methods only accepts digits between 1 and 6');
         }
 
         if (!/[1-5]/.test(value)) {
-          throw new Error('methods debe incluir al menos un método entre 1 y 5');
+          throw new Error('methods must include at least one method between 1 and 5');
         }
 
         // El dígito 6 es la integración, que compara las salidas de los métodos
         // 1 a 4. Pedirla sola no tendría nada que integrar y R fallaría a mitad
         // de la corrida buscando archivos que nadie generó.
         if (value.includes('6') && !/[1-4]/.test(value)) {
-          throw new Error('Si incluyes 6 (integración), también debes incluir al menos un método DE (1-4)');
+          throw new Error('If you include 6 (integration), you must also include at least one DE method (1-4)');
         }
 
         return true;
       }
 
       if (!Array.isArray(value)) {
-        throw new Error('methods debe ser string o arreglo');
+        throw new Error('methods must be a string or an array');
       }
 
       for (const item of value) {
         if (!item || typeof item !== 'object') {
-          throw new Error('Cada método debe ser un objeto');
+          throw new Error('Each method must be an object');
         }
 
         const row = item as Record<string, unknown>;
         // Se valida estructura completa del objeto Method del frontend.
         const name = row.name;
         if (typeof name !== 'string' || name.trim().length === 0) {
-          throw new Error('Cada método debe incluir name');
+          throw new Error('Each method must include name');
         }
 
         if (typeof row.title !== 'string' || row.title.trim().length === 0) {
-          throw new Error('Cada método debe incluir title');
+          throw new Error('Each method must include title');
         }
 
         if (typeof row.description !== 'string' || row.description.trim().length === 0) {
-          throw new Error('Cada método debe incluir description');
+          throw new Error('Each method must include description');
         }
 
         if (typeof row.link !== 'string' || row.link.trim().length === 0) {
-          throw new Error('Cada método debe incluir link');
+          throw new Error('Each method must include link');
         }
 
         const isSelected = row.isSelected;
@@ -384,7 +373,7 @@ export const validateRunAnalysis = [
 
       for (const comparison of value) {
         if (!comparison || typeof comparison !== 'object') {
-          throw new Error('Cada comparison debe ser un objeto');
+          throw new Error('Each comparison must be an object');
         }
 
         const row = comparison as Record<string, unknown>;
@@ -417,19 +406,19 @@ export const validateRunAnalysis = [
     // Compatibilidad legacy: permite enviar umbrales en raíz además de `parameters`.
     .optional()
     .isFloat({ gt: 0 })
-    .withMessage('logfc debe ser un número mayor a 0'),
+    .withMessage('logfc must be a number greater than 0'),
 
   body('cpm')
     // Compatibilidad legacy: permite enviar umbrales en raíz además de `parameters`.
     .optional()
     .isFloat({ gt: 0 })
-    .withMessage('cpm debe ser un número mayor a 0'),
+    .withMessage('cpm must be a number greater than 0'),
 
   body('padjust')
     // Compatibilidad legacy: permite enviar umbrales en raíz además de `parameters`.
     .optional()
     .isFloat({ gt: 0, lt: 1 })
-    .withMessage('padjust debe ser un número mayor a 0 y menor a 1'),
+    .withMessage('padjust must be a number greater than 0 and less than 1'),
 
   body('batch')
     // Compatibilidad legacy: acepta vector batch en raíz del body.
@@ -437,7 +426,7 @@ export const validateRunAnalysis = [
     .isString()
     .withMessage('batch debe ser una cadena')
     .matches(/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?)*$/)
-    .withMessage('batch debe ser una lista numérica separada por comas'),
+    .withMessage('batch must be a comma-separated numeric list'),
 
   body('generateZip')
     // Compatibilidad legacy: se puede enviar en raíz aunque normalmente venga por `parameters`.
@@ -463,7 +452,7 @@ export const validateRunAnalysis = [
 
       for (const sample of value) {
         if (!sample || typeof sample !== 'object') {
-          throw new Error('Cada sample debe ser un objeto');
+          throw new Error('Each sample must be an object');
         }
 
         const row = sample as Record<string, unknown>;
@@ -475,7 +464,7 @@ export const validateRunAnalysis = [
           row.originalName !== undefined &&
           (typeof row.originalName !== 'string' || row.originalName.trim().length === 0)
         ) {
-          throw new Error('sample.originalName debe ser string no vacío cuando se envía');
+          throw new Error('sample.originalName must be a non-empty string when provided');
         }
 
         if (row.batch === undefined) {
@@ -491,7 +480,7 @@ export const validateRunAnalysis = [
         }
 
         if (typeof row.batch === 'string' && row.batch.trim().length === 0) {
-          throw new Error('sample.batch no puede ser cadena vacía; usa null si no aplica');
+          throw new Error('sample.batch cannot be an empty string; use null when not applicable');
         }
       }
 
@@ -505,7 +494,7 @@ export const validateRunAnalysis = [
 export const validateProjectIdParam = [
   param('projectId')
     .isInt({ min: 1 })
-    .withMessage('El projectId debe ser un entero positivo'),
+    .withMessage('projectId must be a positive integer'),
 ];
 
 /**

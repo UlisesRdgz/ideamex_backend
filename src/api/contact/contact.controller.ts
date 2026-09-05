@@ -30,7 +30,7 @@ export const submitContactForm = async (req: Request, res: Response): Promise<vo
   try {
     // Validación defensiva adicional (además de express-validator en rutas).
     if (!fullName || !email || !phone || !subject || !message) {
-      sendErrorResponse(res, 'Todos los campos son obligatorios', null, 400);
+      sendErrorResponse(res, 'All fields are required', null, 400);
       return;
     }
 
@@ -50,6 +50,6 @@ export const submitContactForm = async (req: Request, res: Response): Promise<vo
     sendSuccessResponse(res, 'Tu solicitud fue enviada exitosamente.', null, 201);
   } catch (error) {
     console.error('[CONTACT] Error al procesar la solicitud:', error);
-    sendErrorResponse(res, 'Error del servidor al procesar el formulario', null, 500);
+    sendErrorResponse(res, 'Server error while processing the form', null, 500);
   }
 };

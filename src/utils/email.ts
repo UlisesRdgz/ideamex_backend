@@ -2,8 +2,9 @@
  * @file Utilidad para enviar correos electrónicos.
  * Contiene funciones para enviar correos relacionados con la autenticación de usuarios.
  *
- * Cada mensaje se compone en un único idioma —el de la cuenta— para que asunto
- * y cuerpo nunca queden mezclados.
+ * Todos los mensajes van en inglés, igual que las respuestas de la API: IDEAMEX
+ * lo usan grupos de investigación de distintos países y un solo idioma evita
+ * mantener catálogos paralelos.
  *
  * @module utils/email
  * @requires nodemailer
@@ -13,7 +14,6 @@
  */
 
 import { emailTransporter } from '../config/email';
-import { DEFAULT_LANGUAGE, SupportedLanguage } from '../config/i18n';
 import {
   buildEmailShell,
   buildLogoAttachment,
@@ -39,77 +39,36 @@ interface EmailCopy {
 }
 
 /**
- * Textos del correo de activación por idioma.
+ * Textos del correo de activación de cuenta.
  */
-const ACTIVATION_COPY: Record<SupportedLanguage, EmailCopy> = {
-  es: {
-    subject: 'Activa tu cuenta de IDEAMEX',
-    preheader: 'Confirma tu correo para empezar a usar IDEAMEX.',
-    title: 'Activa tu cuenta',
-    body: 'Bienvenido a IDEAMEX. Confirma tu correo para empezar a usar la plataforma.',
-    button: 'Activar cuenta',
-    expiry: 'Este enlace caduca en 24 horas.',
-    ignore: 'Si no creaste esta cuenta, puedes ignorar este mensaje.',
-  },
-  en: {
-    subject: 'Activate your IDEAMEX account',
-    preheader: 'Confirm your email address to start using IDEAMEX.',
-    title: 'Activate your account',
-    body: 'Welcome to IDEAMEX. Confirm your email address to start using the platform.',
-    button: 'Activate account',
-    expiry: 'This link expires in 24 hours.',
-    ignore: "If you didn't create this account, you can ignore this message.",
-  },
-  fr: {
-    subject: 'Activez votre compte IDEAMEX',
-    preheader: 'Confirmez votre adresse e-mail pour commencer à utiliser IDEAMEX.',
-    title: 'Activez votre compte',
-    body: 'Bienvenue sur IDEAMEX. Confirmez votre adresse e-mail pour commencer à utiliser la plateforme.',
-    button: 'Activer le compte',
-    expiry: 'Ce lien expire dans 24 heures.',
-    ignore: "Si vous n'avez pas créé ce compte, vous pouvez ignorer ce message.",
-  },
+const ACTIVATION_COPY: EmailCopy = {
+  subject: 'Activate your IDEAMEX account',
+  preheader: 'Confirm your email address to start using IDEAMEX.',
+  title: 'Activate your account',
+  body: 'Welcome to IDEAMEX. Confirm your email address to start using the platform.',
+  button: 'Activate account',
+  expiry: 'This link expires in 24 hours.',
+  ignore: "If you didn't create this account, you can ignore this message.",
 };
 
 /**
- * Textos del correo de restablecimiento de contraseña por idioma.
+ * Textos del correo de restablecimiento de contraseña.
  */
-const PASSWORD_RESET_COPY: Record<SupportedLanguage, EmailCopy> = {
-  es: {
-    subject: 'Restablece tu contraseña de IDEAMEX',
-    preheader: 'Solicitaste cambiar tu contraseña de IDEAMEX.',
-    title: 'Restablece tu contraseña',
-    body: 'Solicitaste cambiar tu contraseña. Elige una nueva desde el siguiente botón.',
-    button: 'Restablecer contraseña',
-    expiry: 'Este enlace caduca en 1 hora.',
-    ignore: 'Si no solicitaste el cambio, puedes ignorar este mensaje: tu contraseña no cambiará.',
-  },
-  en: {
-    subject: 'Reset your IDEAMEX password',
-    preheader: 'You asked to change your IDEAMEX password.',
-    title: 'Reset your password',
-    body: 'You asked to change your password. Choose a new one using the button below.',
-    button: 'Reset password',
-    expiry: 'This link expires in 1 hour.',
-    ignore:
-      "If you didn't request this change, you can ignore this message: your password won't change.",
-  },
-  fr: {
-    subject: 'Réinitialisez votre mot de passe IDEAMEX',
-    preheader: 'Vous avez demandé à changer votre mot de passe IDEAMEX.',
-    title: 'Réinitialiser le mot de passe',
-    body: 'Vous avez demandé à changer votre mot de passe. Choisissez-en un nouveau avec le bouton ci-dessous.',
-    button: 'Réinitialiser le mot de passe',
-    expiry: 'Ce lien expire dans 1 heure.',
-    ignore:
-      "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : votre mot de passe restera inchangé.",
-  },
+const PASSWORD_RESET_COPY: EmailCopy = {
+  subject: 'Reset your IDEAMEX password',
+  preheader: 'You asked to change your IDEAMEX password.',
+  title: 'Reset your password',
+  body: 'You asked to change your password. Choose a new one using the button below.',
+  button: 'Reset password',
+  expiry: 'This link expires in 1 hour.',
+  ignore:
+    "If you didn't request this change, you can ignore this message: your password won't change.",
 };
 
 /**
  * Compone el contenido de un correo transaccional con botón de acción.
  *
- * @param copy - Textos ya resueltos en el idioma del destinatario.
+ * @param copy - Textos del mensaje.
  * @param actionLink - Enlace de un solo uso al que apunta el botón.
  * @returns Fragmento HTML sin encabezado ni pie.
  */
@@ -171,15 +130,13 @@ const buildTransactionalText = (copy: EmailCopy, actionLink: string): string =>
  * Envía un correo transaccional con botón de acción.
  *
  * @param params.email - Destinatario.
- * @param params.copy - Textos ya resueltos en su idioma.
+ * @param params.copy - Textos del mensaje.
  * @param params.actionLink - Enlace de un solo uso.
- * @param params.language - Idioma del mensaje.
  */
 const sendTransactionalEmail = async (params: {
   email: string;
   copy: EmailCopy;
   actionLink: string;
-  language: SupportedLanguage;
 }): Promise<void> => {
   await emailTransporter.sendMail({
     from: buildSender(),
@@ -187,7 +144,6 @@ const sendTransactionalEmail = async (params: {
     subject: params.copy.subject,
     text: buildTransactionalText(params.copy, params.actionLink),
     html: buildEmailShell({
-      language: params.language,
       title: params.copy.subject,
       preheader: params.copy.preheader,
       contentHTML: buildTransactionalContent(params.copy, params.actionLink),
@@ -203,20 +159,14 @@ const sendTransactionalEmail = async (params: {
  * @function sendActivationEmail
  * @param email - Dirección de correo electrónico del destinatario.
  * @param token - Token de activación único.
- * @param language - Idioma de la cuenta; determina asunto y cuerpo.
  * @throws Error si ocurre un problema al enviar el correo.
  */
-export const sendActivationEmail = async (
-  email: string,
-  token: string,
-  language: SupportedLanguage = DEFAULT_LANGUAGE
-): Promise<void> => {
+export const sendActivationEmail = async (email: string, token: string): Promise<void> => {
   // Link orientado al frontend público, no al endpoint API interno.
   await sendTransactionalEmail({
     email,
-    copy: ACTIVATION_COPY[language],
+    copy: ACTIVATION_COPY,
     actionLink: `${FRONTEND_BASE_URL}/auth/activate?token=${encodeURIComponent(token)}`,
-    language,
   });
 };
 
@@ -227,19 +177,13 @@ export const sendActivationEmail = async (
  * @function sendPasswordResetEmail
  * @param email - Dirección de correo electrónico del usuario.
  * @param token - Token generado para el restablecimiento de contraseña.
- * @param language - Idioma de la cuenta; determina asunto y cuerpo.
  * @throws Error si ocurre un problema al enviar el correo.
  */
-export const sendPasswordResetEmail = async (
-  email: string,
-  token: string,
-  language: SupportedLanguage = DEFAULT_LANGUAGE
-): Promise<void> => {
+export const sendPasswordResetEmail = async (email: string, token: string): Promise<void> => {
   // Token via query param para que el frontend renderice formulario de cambio de contraseña.
   await sendTransactionalEmail({
     email,
-    copy: PASSWORD_RESET_COPY[language],
+    copy: PASSWORD_RESET_COPY,
     actionLink: `${FRONTEND_BASE_URL}/auth/reset-password?token=${encodeURIComponent(token)}`,
-    language,
   });
 };

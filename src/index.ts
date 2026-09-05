@@ -92,7 +92,7 @@ const contactLimiter = rateLimit({
   handler: (req: Request, res: Response) => {
     sendErrorResponse(
       res,
-      'Has alcanzado el límite de solicitudes. Inténtalo más tarde.',
+      'You have reached the request limit. Try again later.',
       null,
       429
     );
@@ -117,7 +117,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('[ERROR] Unhandled:', err);
 
   if (err?.type === 'entity.parse.failed') {
-    sendErrorResponse(res, 'JSON inválido en el body de la solicitud', null, 400);
+    sendErrorResponse(res, 'Invalid JSON in request body', null, 400);
     return;
   }
 
@@ -125,7 +125,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     // Errores nativos de multer (p.ej. tamaño máximo).
     const fileErrorMessage =
       err.code === 'LIMIT_FILE_SIZE'
-        ? 'Archivo demasiado grande. El máximo permitido es 25 MB'
+        ? 'File too large. The maximum allowed size is 25 MB'
         : 'Error al procesar archivo de subida';
     sendErrorResponse(res, fileErrorMessage, null, 400);
     return;

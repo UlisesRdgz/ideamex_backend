@@ -30,7 +30,7 @@ export const requireUser: RequestHandler = (req, res, next) => {
   const authHeader = req.header('Authorization');
 
   if (!authHeader?.startsWith('Bearer ')) {
-    sendErrorResponse(res, 'Token Bearer faltante o mal formado', null, 401);
+    sendErrorResponse(res, 'Missing or malformed Bearer token', null, 401);
     return;
   }
 
@@ -46,7 +46,7 @@ export const requireUser: RequestHandler = (req, res, next) => {
       typeof decoded.id_user !== 'number' ||
       typeof decoded.username !== 'string'
     ) {
-      sendErrorResponse(res, 'Token inválido', null, 401);
+      sendErrorResponse(res, 'Invalid token', null, 401);
       return;
     }
 
@@ -60,7 +60,7 @@ export const requireUser: RequestHandler = (req, res, next) => {
     next();
   } catch (error) {
     console.error('[AUTH] Token inválido o expirado:', error);
-    sendErrorResponse(res, 'Token inválido o expirado', null, 401);
+    sendErrorResponse(res, 'Invalid or expired token', null, 401);
   }
 };
 
@@ -84,13 +84,13 @@ export const checkEmailExists = async (
     // Previene duplicados de email antes del INSERT.
     const existingUser = await findUserByEmail(email);
     if (existingUser) {
-      sendErrorResponse(res, 'El correo ya está en uso', null, 400);
+      sendErrorResponse(res, 'Email is already in use', null, 400);
       return;
     }
 
     next();
   } catch (error) {
     console.error('[AUTH] Error al verificar correo existente:', error);
-    sendErrorResponse(res, 'Error de servidor', null, 500);
+    sendErrorResponse(res, 'Server error', null, 500);
   }
 };

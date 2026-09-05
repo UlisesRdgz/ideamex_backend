@@ -61,14 +61,14 @@ export const saveContactRequest = async (
 export const notifyAdminByEmail = async (
   request: Omit<ContactRequest, 'id_contact_request' | 'created_at'>
 ): Promise<void> => {
-  // Este aviso lo lee el equipo de IDEAMEX, no el visitante: va siempre en
-  // español y no sigue el idioma con el que se llenó el formulario.
+  // Aviso interno para el equipo de IDEAMEX, no para el visitante. Va en inglés
+  // como el resto de los mensajes del sistema.
   const fields: Array<{ label: string; value: string; preserveLineBreaks?: boolean }> = [
-    { label: 'Nombre', value: request.full_name },
-    { label: 'Correo', value: request.email },
-    { label: 'Teléfono', value: request.phone },
-    { label: 'Asunto', value: request.subject },
-    { label: 'Mensaje', value: request.message, preserveLineBreaks: true },
+    { label: 'Name', value: request.full_name },
+    { label: 'Email', value: request.email },
+    { label: 'Phone', value: request.phone },
+    { label: 'Subject', value: request.subject },
+    { label: 'Message', value: request.message, preserveLineBreaks: true },
   ];
 
   // Escapa todos los campos para evitar inyección HTML en el correo.
@@ -90,7 +90,7 @@ export const notifyAdminByEmail = async (
   const contentHTML = `              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td style="padding:28px 40px 4px 40px;">
-                    <p style="margin:0;font-size:20px;font-weight:bold;color:${COLORS.brand};">Nueva solicitud de contacto</p>
+                    <p style="margin:0;font-size:20px;font-weight:bold;color:${COLORS.brand};">New contact request</p>
                   </td>
                 </tr>
                 <tr>
@@ -103,7 +103,7 @@ ${rows}
               </table>`;
 
   const textBody = [
-    'Nueva solicitud de contacto',
+    'New contact request',
     '',
     ...fields.map(({ label, value }) => `${label}: ${value}`),
     '',
@@ -116,12 +116,11 @@ ${rows}
     to: process.env.CONTACT_NOTIFICATION_EMAIL || 'ideamex.unam@gmail.com',
     // Permite responder al visitante directamente desde el aviso.
     replyTo: request.email,
-    subject: `Nueva solicitud de contacto: ${request.subject}`,
+    subject: `New contact request: ${request.subject}`,
     text: textBody,
     html: buildEmailShell({
-      language: 'es',
-      title: 'Nueva solicitud de contacto',
-      preheader: `${request.full_name} escribió sobre: ${request.subject}`,
+      title: 'New contact request',
+      preheader: `${request.full_name} wrote about: ${request.subject}`,
       contentHTML,
     }),
     attachments: [buildLogoAttachment()],

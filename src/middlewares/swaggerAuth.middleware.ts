@@ -31,7 +31,7 @@ export const swaggerAuth = (req: Request, res: Response, next: NextFunction): vo
 
   if (!authHeader || !authHeader.startsWith('Basic ')) {
     res.setHeader('WWW-Authenticate', 'Basic');
-    sendErrorResponse(res, 'Autenticación requerida', null, 401);
+    sendErrorResponse(res, 'Authentication required', null, 401);
     return;
   }
 
@@ -45,10 +45,10 @@ export const swaggerAuth = (req: Request, res: Response, next: NextFunction): vo
     if (inputUsername === username && inputPassword === password) {
       next();
     } else {
-      sendErrorResponse(res, 'Credenciales inválidas', null, 403);
+      sendErrorResponse(res, 'Invalid credentials', null, 403);
     }
   } catch (error) {
     console.error('[SWAGGER AUTH] Error procesando credenciales:', error);
-    sendErrorResponse(res, 'Error en autenticación', null, 500);
+    sendErrorResponse(res, 'Authentication error', null, 500);
   }
 };
